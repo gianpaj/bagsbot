@@ -7,3 +7,4 @@
  */
 
 export { WalletManager } from './wallet.js';
+export { TradeExecutor, type IBagsTradeService } from './executor.js';
