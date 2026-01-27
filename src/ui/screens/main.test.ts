@@ -35,20 +35,26 @@ describe('main screen', () => {
       maxOpenPositions: 5,
       filters: {
         creator: {
-          minFollowers: 100,
-          maxHoldersPercent: 50,
+          requireVerifiedSocial: true,
+          minFollowerCount: 100,
+          minAccountAgeDays: 30,
+          checkPreviousLaunches: true,
         },
         technical: {
-          minPriceMomentum: 0.5,
-          minVolumeMomentum: 1.0,
+          requireCompleteMetadata: true,
+          requireDescription: true,
+          requireSocialLinks: true,
+          validateImageUrl: true,
         },
         social: {
-          minTwitterFollowers: 1000,
-          minTwitterCreationAgeDays: 30,
+          checkTwitterMentions: true,
+          checkTelegramGroup: true,
+          minCommunitySize: 1000,
         },
         liquidity: {
           minInitialLiquiditySol: 5,
-          minCurveFillPercent: 5,
+          maxBondingCurvePercent: 50,
+          maxTopHolderPercent: 30,
         },
       },
       scoring: {
@@ -187,10 +193,12 @@ describe('main screen', () => {
       botConfig: mockBotConfig,
     };
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
     const screen: any = createMainScreen(config);
 
-    expect(screen.flexDirection).toBe('column');
+    expect(
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+      screen.flexDirection
+    ).toBe('column');
   });
 
   it('should handle empty positions array', () => {

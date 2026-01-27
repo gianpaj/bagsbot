@@ -35,10 +35,28 @@ describe('history screen', () => {
       maxPositionPercent: 0.1,
       maxOpenPositions: 5,
       filters: {
-        creator: { minFollowers: 100, maxHoldersPercent: 50 },
-        technical: { minPriceMomentum: 0.5, minVolumeMomentum: 1.0 },
-        social: { minTwitterFollowers: 1000, minTwitterCreationAgeDays: 30 },
-        liquidity: { minInitialLiquiditySol: 5, minCurveFillPercent: 5 },
+        creator: {
+          requireVerifiedSocial: true,
+          minFollowerCount: 100,
+          minAccountAgeDays: 30,
+          checkPreviousLaunches: true,
+        },
+        technical: {
+          requireCompleteMetadata: true,
+          requireDescription: true,
+          requireSocialLinks: true,
+          validateImageUrl: true,
+        },
+        social: {
+          checkTwitterMentions: true,
+          checkTelegramGroup: true,
+          minCommunitySize: 1000,
+        },
+        liquidity: {
+          minInitialLiquiditySol: 5,
+          maxBondingCurvePercent: 50,
+          maxTopHolderPercent: 30,
+        },
       },
       scoring: {
         weights: { creator: 0.25, technical: 0.25, social: 0.25, liquidity: 0.25 },
@@ -157,10 +175,12 @@ describe('history screen', () => {
       botConfig: mockBotConfig,
     };
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
     const screen: any = createHistoryScreen(config);
 
-    expect(screen.flexDirection).toBe('column');
+    expect(
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+      screen.flexDirection
+    ).toBe('column');
   });
 
   it('should handle trades with different statuses', () => {

@@ -31,20 +31,26 @@ describe('settings screen', () => {
       maxOpenPositions: 5,
       filters: {
         creator: {
-          minFollowers: 100,
-          maxHoldersPercent: 50,
+          requireVerifiedSocial: true,
+          minFollowerCount: 100,
+          minAccountAgeDays: 30,
+          checkPreviousLaunches: true,
         },
         technical: {
-          minPriceMomentum: 0.5,
-          minVolumeMomentum: 1.0,
+          requireCompleteMetadata: true,
+          requireDescription: true,
+          requireSocialLinks: true,
+          validateImageUrl: true,
         },
         social: {
-          minTwitterFollowers: 1000,
-          minTwitterCreationAgeDays: 30,
+          checkTwitterMentions: true,
+          checkTelegramGroup: true,
+          minCommunitySize: 1000,
         },
         liquidity: {
           minInitialLiquiditySol: 5,
-          minCurveFillPercent: 5,
+          maxBondingCurvePercent: 50,
+          maxTopHolderPercent: 30,
         },
       },
       scoring: {
@@ -107,10 +113,12 @@ describe('settings screen', () => {
       botConfig: mockBotConfig,
     };
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
     const screen: any = createSettingsScreen(config);
 
-    expect(screen.flexDirection).toBe('column');
+    expect(
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+      screen.flexDirection
+    ).toBe('column');
   });
 
   it('should handle different position size percentages', () => {
@@ -157,20 +165,26 @@ describe('settings screen', () => {
       ...mockBotConfig,
       filters: {
         creator: {
-          minFollowers: 500,
-          maxHoldersPercent: 30,
+          requireVerifiedSocial: false,
+          minFollowerCount: 500,
+          minAccountAgeDays: 60,
+          checkPreviousLaunches: false,
         },
         technical: {
-          minPriceMomentum: 1.0,
-          minVolumeMomentum: 2.0,
+          requireCompleteMetadata: false,
+          requireDescription: false,
+          requireSocialLinks: false,
+          validateImageUrl: false,
         },
         social: {
-          minTwitterFollowers: 5000,
-          minTwitterCreationAgeDays: 60,
+          checkTwitterMentions: false,
+          checkTelegramGroup: false,
+          minCommunitySize: 5000,
         },
         liquidity: {
           minInitialLiquiditySol: 10,
-          minCurveFillPercent: 10,
+          maxBondingCurvePercent: 30,
+          maxTopHolderPercent: 20,
         },
       },
     };
@@ -234,11 +248,13 @@ describe('settings screen', () => {
       botConfig: mockBotConfig,
     };
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
     const screen: any = createSettingsScreen(config);
 
     // The screen should be defined and have all required sections
     expect(screen).toBeDefined();
-    expect(screen.flexDirection).toBe('column');
+    expect(
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+      screen.flexDirection
+    ).toBe('column');
   });
 });

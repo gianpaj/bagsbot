@@ -165,12 +165,20 @@ export function createSettingsScreen(config: SettingsScreenConfig): unknown {
       content: 'Creator Filter',
     }),
     Text({
-      id: 'settings-creator-min-followers',
-      content: `Min Followers: ${filters.creator.minFollowers}`,
+      id: 'settings-creator-verified-social',
+      content: `Require Verified Social: ${filters.creator.requireVerifiedSocial ? 'ON' : 'OFF'}`,
     }),
     Text({
-      id: 'settings-creator-max-holders',
-      content: `Max Holders %: ${filters.creator.maxHoldersPercent}%`,
+      id: 'settings-creator-min-followers',
+      content: `Min Follower Count: ${filters.creator.minFollowerCount}`,
+    }),
+    Text({
+      id: 'settings-creator-min-account-age',
+      content: `Min Account Age: ${filters.creator.minAccountAgeDays} days`,
+    }),
+    Text({
+      id: 'settings-creator-check-launches',
+      content: `Check Previous Launches: ${filters.creator.checkPreviousLaunches ? 'ON' : 'OFF'}`,
     })
   );
 
@@ -185,12 +193,20 @@ export function createSettingsScreen(config: SettingsScreenConfig): unknown {
       content: 'Technical Filter',
     }),
     Text({
-      id: 'settings-min-price-momentum',
-      content: `Min Price Momentum: ${filters.technical.minPriceMomentum}`,
+      id: 'settings-complete-metadata',
+      content: `Require Complete Metadata: ${filters.technical.requireCompleteMetadata ? 'ON' : 'OFF'}`,
     }),
     Text({
-      id: 'settings-min-volume-momentum',
-      content: `Min Volume Momentum: ${filters.technical.minVolumeMomentum}`,
+      id: 'settings-require-description',
+      content: `Require Description: ${filters.technical.requireDescription ? 'ON' : 'OFF'}`,
+    }),
+    Text({
+      id: 'settings-require-social-links',
+      content: `Require Social Links: ${filters.technical.requireSocialLinks ? 'ON' : 'OFF'}`,
+    }),
+    Text({
+      id: 'settings-validate-image',
+      content: `Validate Image URL: ${filters.technical.validateImageUrl ? 'ON' : 'OFF'}`,
     })
   );
 
@@ -205,12 +221,16 @@ export function createSettingsScreen(config: SettingsScreenConfig): unknown {
       content: 'Social Filter',
     }),
     Text({
-      id: 'settings-min-twitter-followers',
-      content: `Min Twitter Followers: ${filters.social.minTwitterFollowers}`,
+      id: 'settings-check-twitter',
+      content: `Check Twitter Mentions: ${filters.social.checkTwitterMentions ? 'ON' : 'OFF'}`,
     }),
     Text({
-      id: 'settings-min-twitter-creation-age',
-      content: `Min Twitter Account Age: ${filters.social.minTwitterCreationAgeDays} days`,
+      id: 'settings-check-telegram',
+      content: `Check Telegram Group: ${filters.social.checkTelegramGroup ? 'ON' : 'OFF'}`,
+    }),
+    Text({
+      id: 'settings-min-community-size',
+      content: `Min Community Size: ${filters.social.minCommunitySize}`,
     })
   );
 
@@ -229,8 +249,12 @@ export function createSettingsScreen(config: SettingsScreenConfig): unknown {
       content: `Min Initial Liquidity: ${filters.liquidity.minInitialLiquiditySol} SOL`,
     }),
     Text({
-      id: 'settings-min-curve-fill',
-      content: `Min Curve Fill %: ${filters.liquidity.minCurveFillPercent}%`,
+      id: 'settings-max-curve-percent',
+      content: `Max Bonding Curve %: ${filters.liquidity.maxBondingCurvePercent}%`,
+    }),
+    Text({
+      id: 'settings-max-top-holder',
+      content: `Max Top Holder %: ${filters.liquidity.maxTopHolderPercent}%`,
     })
   );
 
