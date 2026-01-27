@@ -21,7 +21,7 @@ import { FilterPipeline } from './filters/pipeline.js';
 import type { FilterRegistry } from './filters/types.js';
 import { ScoringEngine } from './scoring/engine.js';
 import { AlertSystem, type Opportunity } from './alerts/system.js';
-import { OpenTUIApp } from './ui/app.js';
+// OpenTUIApp is imported dynamically to avoid terminal corruption when in headless mode
 import { TradeExecutor } from './trading/executor.js';
 import type { IBagsTradeService } from './trading/executor.js';
 import { WalletManager } from './trading/wallet.js';
@@ -32,6 +32,9 @@ import type { LaunchpadLaunchEvent } from './types/launch.js';
 import type { ExitSignal } from './types/positions.js';
 import { logger } from './utils/logger.js';
 import { randomUUID } from 'crypto';
+
+// Type for dynamically imported OpenTUIApp
+type OpenTUIAppType = import('./ui/app.js').OpenTUIApp;
 
 /**
  * Configuration for the BagsBot
@@ -76,7 +79,7 @@ export class BagsBot {
   private filterPipeline: FilterPipeline;
   private scoringEngine: ScoringEngine;
   private alertSystem: AlertSystem;
-  private uiApp: OpenTUIApp | null;
+  private uiApp: OpenTUIAppType | null = null;
   private tradeExecutor: TradeExecutor;
   private walletManager: WalletManager;
   private positionManager: PositionManager;
@@ -116,15 +119,9 @@ export class BagsBot {
       this.config.trading
     );
 
-    // Only initialize UI if not in headless mode
+    // UI will be initialized in initialize() if not in headless mode
     if (this.headless) {
-      this.uiApp = null;
       this.logger.info('Running in headless mode - no terminal UI');
-    } else {
-      this.uiApp = new OpenTUIApp({
-        botConfig: this.config,
-        opportunityTimeoutMs: this.config.ui.opportunityTimeoutSec * 1000,
-      });
     }
 
     // Initialize position manager connection
@@ -167,7 +164,13 @@ export class BagsBot {
       }
 
       // Start the UI (if not headless)
-      if (this.uiApp !== null) {
+      if (!this.headless) {
+        // Dynamically import OpenTUIApp to avoid terminal corruption when in headless mode
+        const { OpenTUIApp } = await import('./ui/app.js');
+        this.uiApp = new OpenTUIApp({
+          botConfig: this.config,
+          opportunityTimeoutMs: this.config.ui.opportunityTimeoutSec * 1000,
+        });
         await this.uiApp.start();
         this.logger.info('UI started successfully');
       }
