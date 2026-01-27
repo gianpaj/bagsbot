@@ -204,6 +204,11 @@ export const uiConfigSchema = z.object({
   soundEnabled: z
     .boolean()
     .describe('Whether to play sounds for alerts'),
+  headless: z
+    .boolean()
+    .optional()
+    .default(true)
+    .describe('Run in headless mode (no terminal UI)'),
 });
 
 /**

@@ -22,6 +22,7 @@ import type { FilterRegistry } from './filters/types.js';
 import { ScoringEngine } from './scoring/engine.js';
 import { AlertSystem, type Opportunity } from './alerts/system.js';
 // OpenTUIApp is imported dynamically to avoid terminal corruption when in headless mode
+import { HeadlessCli, createHeadlessCli } from './ui/headless-cli.js';
 import { TradeExecutor } from './trading/executor.js';
 import type { IBagsTradeService } from './trading/executor.js';
 import { WalletManager } from './trading/wallet.js';
@@ -80,6 +81,7 @@ export class BagsBot {
   private scoringEngine: ScoringEngine;
   private alertSystem: AlertSystem;
   private uiApp: OpenTUIAppType | null = null;
+  private headlessCli: HeadlessCli | null = null;
   private tradeExecutor: TradeExecutor;
   private walletManager: WalletManager;
   private positionManager: PositionManager;
@@ -163,7 +165,7 @@ export class BagsBot {
         throw error;
       }
 
-      // Start the UI (if not headless)
+      // Start the UI (if not headless) or headless CLI
       if (!this.headless) {
         // Dynamically import OpenTUIApp to avoid terminal corruption when in headless mode
         const { OpenTUIApp } = await import('./ui/app.js');
@@ -173,6 +175,26 @@ export class BagsBot {
         });
         await this.uiApp.start();
         this.logger.info('UI started successfully');
+      } else {
+        // Start headless CLI for keyboard interaction
+        this.headlessCli = createHeadlessCli({
+          onBuy: (opportunityId, amount) => {
+            this.handleOpportunityConfirmation(opportunityId, amount).catch((err) => {
+              this.logger.error('Error confirming opportunity', { error: err });
+            });
+          },
+          onSkip: (opportunityId) => {
+            this.handleOpportunityRejection(opportunityId);
+          },
+          onQuit: () => {
+            this.shutdown().catch((err) => {
+              this.logger.error('Error during shutdown', { error: err });
+              process.exit(1);
+            });
+          },
+        });
+        this.headlessCli.start();
+        this.logger.info('Headless CLI started');
       }
 
       // Connect to Restream listener
@@ -297,11 +319,14 @@ export class BagsBot {
       score,
     });
 
-    // Display in UI (if not headless)
+    // Display in UI or headless CLI
     if (this.uiApp !== null) {
       this.uiApp.showOpportunity(opportunity);
+    } else if (this.headlessCli !== null) {
+      // Show opportunity in headless CLI
+      this.headlessCli.showOpportunity(opportunity);
     } else {
-      // In headless mode, log the opportunity details
+      // Fallback: just log the opportunity details
       this.logger.info('NEW OPPORTUNITY DETECTED', {
         mint: event.mint,
         name: event.name,
@@ -510,10 +535,14 @@ export class BagsBot {
       await this.restreamListener.disconnect();
       this.logger.debug('Restream listener disconnected');
 
-      // Stop UI (if not headless)
+      // Stop UI or headless CLI
       if (this.uiApp !== null) {
         this.uiApp.stop();
         this.logger.debug('UI stopped');
+      }
+      if (this.headlessCli !== null) {
+        this.headlessCli.stop();
+        this.logger.debug('Headless CLI stopped');
       }
 
       // Clean up alert system

@@ -7,6 +7,7 @@
  */
 
 export { OpenTUIApp, type AppConfig, type AppState, type ScreenState } from './app.js';
+export { HeadlessCli, createHeadlessCli, type HeadlessCliCallbacks } from './headless-cli.js';
 export { createMainLayout } from './layout.js';
 export {
   createHeader,

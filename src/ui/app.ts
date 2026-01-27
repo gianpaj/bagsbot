@@ -104,7 +104,7 @@ export class OpenTUIApp {
         debounceDelay: 50,
         targetFps: 30,
         useAlternateScreen: true,
-        useMouse: true,
+        useMouse: false,
         useConsole: false,
       });
 
