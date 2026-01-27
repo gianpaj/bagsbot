@@ -2,7 +2,7 @@
  * Tests for Main Screen
  */
 
-/* eslint-disable @typescript-eslint/no-unsafe-return, @typescript-eslint/no-explicit-any */
+ 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { createMainScreen, type MainScreenConfig } from './main.js';
 import type { BotConfig, LaunchpadLaunchEvent, Position } from '../../types/index.js';
@@ -196,7 +196,7 @@ describe('main screen', () => {
     const screen: any = createMainScreen(config);
 
     expect(
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+       
       screen.flexDirection
     ).toBe('column');
   });

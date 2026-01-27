@@ -9,7 +9,7 @@
  * @module ui/components/position-list
  */
 
-/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call, @typescript-eslint/restrict-template-expressions */
+/* eslint-disable @typescript-eslint/restrict-template-expressions */
 import * as OpenTUIRenderables from '@opentui/core';
 import type { Position } from '../../types/index.js';
 

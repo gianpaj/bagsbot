@@ -2,7 +2,7 @@
  * Tests for History Screen
  */
 
-/* eslint-disable @typescript-eslint/no-unsafe-return, @typescript-eslint/no-explicit-any */
+ 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
   createHistoryScreen,
@@ -178,7 +178,7 @@ describe('history screen', () => {
     const screen: any = createHistoryScreen(config);
 
     expect(
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+       
       screen.flexDirection
     ).toBe('column');
   });

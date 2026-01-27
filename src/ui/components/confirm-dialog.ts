@@ -7,7 +7,7 @@
  * @module ui/components/confirm-dialog
  */
 
-/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call, @typescript-eslint/restrict-template-expressions */
+/* eslint-disable @typescript-eslint/restrict-template-expressions */
 import * as OpenTUIRenderables from '@opentui/core';
 
 // Extract Box and Text factory functions

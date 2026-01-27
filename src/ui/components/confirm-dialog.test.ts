@@ -2,7 +2,7 @@
  * Tests for Confirm Dialog Component
  */
 
-/* eslint-disable @typescript-eslint/no-unsafe-return */
+ 
 import { describe, it, expect, vi } from 'vitest';
 import {
   createConfirmDialog,

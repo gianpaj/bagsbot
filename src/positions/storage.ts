@@ -88,7 +88,7 @@ export class PositionStorage {
         throw new Error('Storage file must contain an array of positions');
       }
 
-      const positions = data.map((item) => deserializePosition(item as Record<string, unknown>));
+      const positions = data.map((item) => deserializePosition(item));
 
       logger.debug('Loaded positions from storage', {
         count: positions.length,

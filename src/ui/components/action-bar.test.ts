@@ -2,7 +2,7 @@
  * Tests for Action Bar Component
  */
 
-/* eslint-disable @typescript-eslint/no-unsafe-return */
+ 
 import { describe, it, expect, vi } from 'vitest';
 import { createActionBar } from './action-bar.js';
 

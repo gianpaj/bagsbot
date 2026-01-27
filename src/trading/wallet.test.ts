@@ -46,7 +46,7 @@ describe('WalletManager', () => {
 
       expect(result).toBeDefined();
       expect(result.publicKey).toBeDefined();
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+       
       expect(mockLoggerInfo).toHaveBeenCalledWith('Wallet loaded successfully', {
         publicKey: expect.any(String),
       });
@@ -148,7 +148,7 @@ describe('WalletManager', () => {
       const balance = await walletManager.getBalance(mockConnection);
 
       expect(balance).toBe(5000000000);
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+       
       expect(mockLoggerDebug).toHaveBeenCalledWith('Retrieved wallet balance', {
         publicKey: expect.any(String),
         balance: 5000000000,
@@ -179,7 +179,7 @@ describe('WalletManager', () => {
 
       await expect(walletManager.getBalance(mockConnection)).rejects.toThrow('Connection failed');
 
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+       
       expect(mockLoggerError).toHaveBeenCalledWith(
         'Failed to retrieve wallet balance',
         expect.objectContaining({
@@ -224,7 +224,7 @@ describe('WalletManager', () => {
 
       expect(signFn).toHaveBeenCalledWith([expect.any(Keypair)]);
       expect(result).toBe(mockTransaction);
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+       
       expect(mockLoggerDebug).toHaveBeenCalledWith('Transaction signed successfully', {
         publicKey: expect.any(String),
       });
@@ -278,7 +278,7 @@ describe('WalletManager', () => {
 
       expect(() => walletManager.sign(mockTransaction)).toThrow('Failed to sign');
 
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+       
       expect(mockLoggerError).toHaveBeenCalledWith(
         'Failed to sign transaction',
         expect.objectContaining({
@@ -383,7 +383,7 @@ describe('WalletManager', () => {
       });
 
       // Ensure no secret key information is in the logged data
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+       
       expect(mockLoggerInfo).not.toHaveBeenCalledWith(
         expect.anything(),
         expect.objectContaining({

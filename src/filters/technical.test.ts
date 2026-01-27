@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/restrict-template-expressions */
+ 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   TechnicalFilter,

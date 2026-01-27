@@ -2,7 +2,7 @@
  * Tests for Settings Screen
  */
 
-/* eslint-disable @typescript-eslint/no-unsafe-return, @typescript-eslint/no-explicit-any */
+ 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { createSettingsScreen, type SettingsScreenConfig } from './settings.js';
 import type { BotConfig } from '../../types/index.js';
@@ -116,7 +116,7 @@ describe('settings screen', () => {
     const screen: any = createSettingsScreen(config);
 
     expect(
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+       
       screen.flexDirection
     ).toBe('column');
   });
@@ -253,7 +253,7 @@ describe('settings screen', () => {
     // The screen should be defined and have all required sections
     expect(screen).toBeDefined();
     expect(
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+       
       screen.flexDirection
     ).toBe('column');
   });

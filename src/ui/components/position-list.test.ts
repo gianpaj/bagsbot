@@ -2,7 +2,7 @@
  * Tests for Position List Component
  */
 
-/* eslint-disable @typescript-eslint/no-unsafe-return, @typescript-eslint/restrict-template-expressions */
+ 
 import { describe, it, expect, vi } from 'vitest';
 import { createPositionList } from './position-list.js';
 import type { Position } from '../../types/index.js';

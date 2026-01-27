@@ -103,10 +103,12 @@ You need a Solana wallet keypair file for trading. Create one using the Solana C
 
 ```bash
 # Install Solana CLI (if not already installed)
-sh -c "$(curl -sSfL https://release.solana.com/stable/install)"
+curl --proto '=https' --tlsv1.2 -sSfL https://solana-install.solana.workers.dev | bash
 
 # Create a new keypair (or use an existing one)
 solana-keygen new --outfile ~/.config/solana/id.json
+
+solana config set --url testnet
 ```
 
 **Security Warning:** Never share your keypair file or commit it to version control.
@@ -119,7 +121,7 @@ git clone https://github.com/gianpaj/bagsbot.git
 cd bagsbot
 
 # Install dependencies
-npm install
+pnpm install
 
 # Copy the environment template
 cp .env.example .env
@@ -127,10 +129,10 @@ cp .env.example .env
 # Edit .env with your configuration (see Configuration section)
 
 # Build the project
-npm run build
+pnpm run build
 
 # Run the bot
-npm start
+pnpm start
 ```
 
 ## Configuration
@@ -243,10 +245,10 @@ The bot uses a configuration file at `~/.bagsbot/config.json`. Default values ar
 
 ```bash
 # Production mode (uses compiled JavaScript)
-npm start
+pnpm start
 
 # Development mode (uses TypeScript directly with hot reload)
-npm run dev
+pnpm run dev
 ```
 
 ### Keybindings
@@ -336,31 +338,31 @@ npm run dev
 
 ```bash
 # Run in development mode
-npm run dev
+pnpm run dev
 
 # Run tests
-npm test
+pnpm test
 
 # Run tests once (no watch)
-npm run test:run
+pnpm run test:run
 
 # Type check
-npm run typecheck
+pnpm run typecheck
 
 # Lint
-npm run lint
+pnpm run lint
 
 # Fix lint issues
-npm run lint:fix
+pnpm run lint:fix
 
 # Format code
-npm run format
+pnpm run format
 
 # Check formatting
-npm run format:check
+pnpm run format:check
 
 # Build
-npm run build
+pnpm run build
 ```
 
 ### Project Structure

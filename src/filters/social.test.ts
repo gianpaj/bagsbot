@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/unbound-method */
+ 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   SocialFilter,

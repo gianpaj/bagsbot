@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/unbound-method */
+ 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { FilterPipeline, createFilterPipeline } from './pipeline.js';
 import type { Filter, FilterRegistry } from './types.js';

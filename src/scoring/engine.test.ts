@@ -9,7 +9,7 @@ import type { ScoringConfig, FilterResult } from '../types/index.js';
 /**
  * Helper function to create a mock filter result
  */
-function createMockFilterResult(score: number = 50): FilterResult {
+function createMockFilterResult(score = 50): FilterResult {
   return {
     passed: score >= 50,
     score,

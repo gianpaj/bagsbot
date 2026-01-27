@@ -2,7 +2,7 @@
  * Tests for Opportunity Card Component
  */
 
-/* eslint-disable @typescript-eslint/no-unsafe-return */
+ 
 import { describe, it, expect, vi } from 'vitest';
 import { createOpportunityCard } from './opportunity-card.js';
 import type { LaunchpadLaunchEvent } from '../../types/launch.js';

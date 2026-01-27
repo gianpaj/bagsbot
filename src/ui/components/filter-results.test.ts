@@ -2,7 +2,7 @@
  * Tests for Filter Results Component
  */
 
-/* eslint-disable @typescript-eslint/no-unsafe-return */
+ 
 import { describe, it, expect, vi } from 'vitest';
 import { createFilterResults } from './filter-results.js';
 import type { FilterResult } from '../../types/filters.js';

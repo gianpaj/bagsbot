@@ -2,7 +2,7 @@
  * Tests for Positions Screen
  */
 
-/* eslint-disable @typescript-eslint/no-unsafe-return, @typescript-eslint/no-explicit-any */
+ 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { createPositionsScreen, type PositionsScreenConfig } from './positions.js';
 import type { BotConfig, Position } from '../../types/index.js';
@@ -174,7 +174,7 @@ describe('positions screen', () => {
     const screen: any = createPositionsScreen(config);
 
     expect(
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+       
       screen.flexDirection
     ).toBe('column');
   });

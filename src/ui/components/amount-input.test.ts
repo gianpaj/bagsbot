@@ -2,7 +2,7 @@
  * Tests for Amount Input Component
  */
 
-/* eslint-disable @typescript-eslint/no-unsafe-return */
+ 
 import { describe, it, expect, vi } from 'vitest';
 import { createAmountInput } from './amount-input.js';
 
