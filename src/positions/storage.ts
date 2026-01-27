@@ -57,7 +57,7 @@ function serializePosition(position: Position): Record<string, unknown> {
 function deserializePosition(data: Record<string, unknown>): Position {
   return {
     ...(data as Omit<Position, 'entryTimestamp'>),
-    entryTimestamp: new Date(data.entryTimestamp as string),
+    entryTimestamp: new Date(data['entryTimestamp'] as string),
   };
 }
 

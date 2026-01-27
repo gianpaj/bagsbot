@@ -41,6 +41,10 @@ coverage/
 wallet.json
 *-keypair.json
 
+# Position storage (contains trading data)
+positions.json
+~/.bagsbot/
+
 # Misc
 *.bak
 *.tmp

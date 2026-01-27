@@ -202,7 +202,12 @@ export class ExitMonitor {
       ...config,
     };
 
-    logger.debug('Exit configuration updated', this.config);
+    logger.debug('Exit configuration updated', {
+      takeProfitPercent: this.config.takeProfitPercent,
+      stopLossPercent: this.config.stopLossPercent,
+      checkIntervalMs: this.config.checkIntervalMs,
+      autoSellEnabled: this.config.autoSellEnabled,
+    });
   }
 
   /**

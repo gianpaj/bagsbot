@@ -223,10 +223,13 @@ export class TechnicalFilter implements Filter<TechnicalFilterConfig> {
 
     try {
       // Perform HTTP HEAD request to check if URL is accessible
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => { controller.abort(); }, 5000);
       const response = await fetch(imageUrl, {
         method: 'HEAD',
-        timeout: 5000,
+        signal: controller.signal,
       });
+      clearTimeout(timeoutId);
 
       // Check for successful response and valid image content type
       if (!response.ok) {

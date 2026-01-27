@@ -370,7 +370,7 @@ export class TradeExecutor {
       try {
         signature = await retry(
           async () => {
-            return await this.tradeService.sendAndConfirmTransaction(signedTx, this.connection);
+            return await this.tradeService.sendAndConfirmTransaction(signedTx as VersionedTransaction, this.connection);
           },
           {
             maxRetries: this.config.maxRetries,
