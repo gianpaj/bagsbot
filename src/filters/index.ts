@@ -9,5 +9,14 @@
 export { FilterPipeline, createFilterPipeline } from './pipeline.js';
 export type { FilterPipelineConfig } from './pipeline.js';
 
+// Filters
+export { CreatorFilter, createCreatorFilter, CREATOR_SCORE } from './creator.js';
+export type {
+  IStateService,
+  IExternalApiService,
+  ILaunchHistoryService,
+  CreatorFilterDependencies,
+} from './creator.js';
+
 // Types
 export type { Filter, FilterCategory, FilterRegistry } from './types.js';
