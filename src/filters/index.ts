@@ -23,5 +23,8 @@ export { TechnicalFilter, createTechnicalFilter, TECHNICAL_SCORE } from './techn
 export { SocialFilter, createSocialFilter, SOCIAL_SCORE } from './social.js';
 export type { ISocialApiService } from './social.js';
 
+export { LiquidityFilter, createLiquidityFilter, LIQUIDITY_SCORE } from './liquidity.js';
+export type { ILiquidityDataService, LiquidityData } from './liquidity.js';
+
 // Types
 export type { Filter, FilterCategory, FilterRegistry } from './types.js';
