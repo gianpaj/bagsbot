@@ -26,9 +26,10 @@ import { TradeExecutor } from './trading/executor.js';
 import type { IBagsTradeService } from './trading/executor.js';
 import { WalletManager } from './trading/wallet.js';
 import { PositionManager } from './positions/manager.js';
-import { ExitMonitor } from './exits/monitor.js';
+import { ExitMonitor, type ExitSignalHandler } from './exits/monitor.js';
 import type { BotConfig } from './types/config.js';
 import type { LaunchpadLaunchEvent } from './types/launch.js';
+import type { ExitSignal } from './types/positions.js';
 import { logger } from './utils/logger.js';
 import { randomUUID } from 'crypto';
 
@@ -82,7 +83,7 @@ export class BagsBot {
   private exitMonitor: ExitMonitor;
   private connection: Connection;
   private isRunning = false;
-  private unsubscribeHandlers: Array<() => void> = [];
+  private unsubscribeHandlers: (() => void)[] = [];
   private logger = logger.child({ module: 'bot' });
 
   /**
@@ -149,7 +150,7 @@ export class BagsBot {
       try {
         this.walletManager.loadWallet(this.config.walletPath);
         this.logger.info('Wallet loaded successfully');
-      } catch (error) {
+      } catch (error: unknown) {
         const message = error instanceof Error ? error.message : String(error);
         this.logger.error('Failed to load wallet', { error: message });
         throw error;
@@ -179,11 +180,13 @@ export class BagsBot {
 
   /**
    * Set up all event handlers for the data flow pipeline
+   *
+   * @returns void
    */
   private setupEventHandlers(): void {
     // Subscribe to launch events from Restream
     const unsubLaunch = this.restreamListener.onLaunch((event: LaunchpadLaunchEvent) => {
-      this.handleLaunchEvent(event).catch((error) => {
+      this.handleLaunchEvent(event).catch((error: unknown) => {
         const message = error instanceof Error ? error.message : String(error);
         this.logger.error('Error handling launch event', {
           error: message,
@@ -199,7 +202,7 @@ export class BagsBot {
 
     // Subscribe to exit signals
     const unsubExit = this.exitMonitor.onExitSignal((signal) => {
-      this.handleExitSignal(signal).catch((error) => {
+      this.handleExitSignal(signal).catch((error: unknown) => {
         const message = error instanceof Error ? error.message : String(error);
         this.logger.error('Error handling exit signal', {
           error: message,
@@ -227,16 +230,11 @@ export class BagsBot {
       });
     };
 
-    process.on('SIGINT', () => handleShutdownSignal('SIGINT'));
-    process.on('SIGTERM', () => handleShutdownSignal('SIGTERM'));
-
-    // Prevent multiple shutdown attempts
-    let isShuttingDown = false;
     process.on('SIGINT', () => {
-      if (!isShuttingDown) {
-        isShuttingDown = true;
-        handleShutdownSignal('SIGINT');
-      }
+      handleShutdownSignal('SIGINT');
+    });
+    process.on('SIGTERM', () => {
+      handleShutdownSignal('SIGTERM');
     });
   }
 
@@ -311,7 +309,7 @@ export class BagsBot {
 
       // Confirm in alert system
       const opportunity = this.alertSystem.getCurrentOpportunity();
-      if (!opportunity || opportunity.id !== opportunityId) {
+      if (!opportunity?.id || opportunity.id !== opportunityId) {
         this.logger.warn('Opportunity not found or not current', { opportunityId });
         return;
       }
@@ -398,7 +396,7 @@ export class BagsBot {
    * When a position reaches take-profit or stop-loss, the exit monitor
    * emits a signal. This handler processes it.
    */
-  private async handleExitSignal(signal: any): Promise<void> {
+  private async handleExitSignal(signal: ExitSignal): Promise<void> {
     this.logger.info('Processing exit signal', {
       type: signal.type,
       currentPrice: signal.currentPrice,
