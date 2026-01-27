@@ -28,3 +28,14 @@ export {
   type ConfirmDialogConfig,
   type ConfirmDialogType,
 } from './components/index.js';
+export {
+  createMainScreen,
+  createPositionsScreen,
+  createHistoryScreen,
+  createSettingsScreen,
+  type MainScreenConfig,
+  type PositionsScreenConfig,
+  type HistoryScreenConfig,
+  type SettingsScreenConfig,
+  type TradeRecord,
+} from './screens/index.js';

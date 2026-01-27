@@ -9,17 +9,29 @@
  * - File persistence
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { rmSync, existsSync, readFileSync, mkdirSync, writeFileSync } from 'fs';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { homedir } from 'os';
 import { dirname } from 'path';
 import { PositionStorage } from './storage.js';
 import type { Position } from '../types/positions.js';
 
+// Mock the fs module
+vi.mock('fs', () => ({
+  readFileSync: vi.fn(),
+  writeFileSync: vi.fn(),
+  mkdirSync: vi.fn(),
+  existsSync: vi.fn(),
+  rmSync: vi.fn(),
+}));
+
+// Get the mocked functions
+import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs';
+
 describe('PositionStorage', () => {
   const storagePath = `${homedir()}/.bagsbot/positions.json`;
   const storageDir = dirname(storagePath);
   let storage: PositionStorage;
+  let mockFileStore: Record<string, string> = {};
 
   const mockPosition: Position = {
     id: '123e4567-e89b-12d3-a456-426614174000',
@@ -36,28 +48,40 @@ describe('PositionStorage', () => {
   };
 
   beforeEach(() => {
-    // Clean up storage before each test
-    // Use a small delay to ensure file system is in a consistent state
-    // when running parallel tests
-    for (let i = 0; i < 10; i++) {
-      try {
-        rmSync(storagePath);
-        break;
-      } catch {
-        // Try again
+    // Reset mock file store for each test
+    mockFileStore = {};
+
+    // Setup mock implementations
+    vi.mocked(existsSync).mockImplementation((path: unknown) => {
+      return typeof path === 'string' && path in mockFileStore;
+    });
+
+    vi.mocked(readFileSync).mockImplementation((path: unknown) => {
+      if (typeof path !== 'string' || !(path in mockFileStore)) {
+        const error = new Error('ENOENT: no such file or directory') as NodeJS.ErrnoException;
+        error.code = 'ENOENT';
+        throw error;
       }
-    }
+      return mockFileStore[path];
+    });
+
+    vi.mocked(writeFileSync).mockImplementation((path: unknown, data: unknown) => {
+      if (typeof path === 'string' && typeof data === 'string') {
+        mockFileStore[path] = data;
+      }
+    });
+
+    vi.mocked(mkdirSync).mockImplementation(() => {
+      // Mock directory creation - just track that it was called
+      return undefined as any;
+    });
 
     storage = new PositionStorage();
   });
 
   afterEach(() => {
-    // Clean up storage after each test
-    try {
-      rmSync(storagePath);
-    } catch {
-      // File doesn't exist
-    }
+    // Clear mocks after each test
+    vi.clearAllMocks();
   });
 
   describe('load', () => {
@@ -180,16 +204,11 @@ describe('PositionStorage', () => {
     });
 
     it('should create storage directory if it does not exist', () => {
-      // Make sure directory doesn't exist
-      try {
-        rmSync(storageDir, { recursive: true });
-      } catch {
-        // Doesn't exist
-      }
-
       storage.save([mockPosition]);
 
-      expect(existsSync(storageDir)).toBe(true);
+      // Verify mkdirSync was called with the correct path
+      expect(vi.mocked(mkdirSync)).toHaveBeenCalledWith(storageDir, { recursive: true });
+      // Verify file was written
       expect(existsSync(storagePath)).toBe(true);
     });
 
@@ -197,7 +216,8 @@ describe('PositionStorage', () => {
       const positions = [mockPosition];
       storage.save(positions);
 
-      const content = readFileSync(storagePath, 'utf-8');
+      // Get the content that was written to the mock file store
+      const content = mockFileStore[storagePath];
       const parsed = JSON.parse(content);
 
       expect(Array.isArray(parsed)).toBe(true);
@@ -207,7 +227,7 @@ describe('PositionStorage', () => {
     it('should format JSON with indentation', () => {
       storage.save([mockPosition]);
 
-      const content = readFileSync(storagePath, 'utf-8');
+      const content = mockFileStore[storagePath];
 
       // Check for indentation (2 spaces)
       expect(content.includes('  ')).toBe(true);
@@ -216,7 +236,7 @@ describe('PositionStorage', () => {
     it('should serialize dates to ISO strings', () => {
       storage.save([mockPosition]);
 
-      const content = readFileSync(storagePath, 'utf-8');
+      const content = mockFileStore[storagePath];
       const parsed = JSON.parse(content);
 
       expect(typeof parsed[0].entryTimestamp).toBe('string');
@@ -243,7 +263,7 @@ describe('PositionStorage', () => {
     it('should save empty array', () => {
       storage.save([]);
 
-      const content = readFileSync(storagePath, 'utf-8');
+      const content = mockFileStore[storagePath];
       const parsed = JSON.parse(content);
 
       expect(Array.isArray(parsed)).toBe(true);
@@ -259,7 +279,7 @@ describe('PositionStorage', () => {
 
       storage.save(positions);
 
-      const content = readFileSync(storagePath, 'utf-8');
+      const content = mockFileStore[storagePath];
       const parsed = JSON.parse(content);
 
       expect(parsed).toHaveLength(3);
@@ -285,7 +305,7 @@ describe('PositionStorage', () => {
 
       storage.save([positionWithAllFields]);
 
-      const content = readFileSync(storagePath, 'utf-8');
+      const content = mockFileStore[storagePath];
       const parsed = JSON.parse(content)[0];
 
       expect(parsed.id).toBe('full-id');

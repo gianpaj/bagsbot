@@ -10,13 +10,24 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { rmSync, existsSync, readFileSync } from 'fs';
 import { homedir } from 'os';
 import { PositionManager, type PnLMetrics } from './manager.js';
 import { PositionStorage } from './storage.js';
 import type { Position } from '../types/positions.js';
 import type { TradeResult } from '../types/trading.js';
 import type { LaunchpadLaunchEvent } from '../types/launch.js';
+
+// Mock the fs module
+vi.mock('fs', () => ({
+  readFileSync: vi.fn(),
+  writeFileSync: vi.fn(),
+  mkdirSync: vi.fn(),
+  existsSync: vi.fn(),
+  rmSync: vi.fn(),
+}));
+
+// Get the mocked functions
+import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs';
 
 // Mock data
 const mockLaunchEvent: LaunchpadLaunchEvent = {
@@ -46,34 +57,43 @@ const mockFailedTradeResult: TradeResult = {
 describe('PositionManager', () => {
   let manager: PositionManager;
   const storagePath = `${homedir()}/.bagsbot/positions.json`;
+  let mockFileStore: Record<string, string> = {};
 
   beforeEach(() => {
-    // Clean up storage before each test (before AND after creation to ensure fresh state)
-    try {
-      rmSync(storagePath);
-    } catch {
-      // File doesn't exist yet
-    }
+    // Reset mock file store for each test
+    mockFileStore = {};
 
-    // Small delay to ensure file system is in a consistent state
-    // This helps with parallel test execution
+    // Setup mock implementations
+    vi.mocked(existsSync).mockImplementation((path: unknown) => {
+      return typeof path === 'string' && path in mockFileStore;
+    });
+
+    vi.mocked(readFileSync).mockImplementation((path: unknown) => {
+      if (typeof path !== 'string' || !(path in mockFileStore)) {
+        const error = new Error('ENOENT: no such file or directory') as NodeJS.ErrnoException;
+        error.code = 'ENOENT';
+        throw error;
+      }
+      return mockFileStore[path];
+    });
+
+    vi.mocked(writeFileSync).mockImplementation((path: unknown, data: unknown) => {
+      if (typeof path === 'string' && typeof data === 'string') {
+        mockFileStore[path] = data;
+      }
+    });
+
+    vi.mocked(mkdirSync).mockImplementation(() => {
+      // Mock directory creation - just track that it was called
+      return undefined as any;
+    });
+
     manager = new PositionManager();
   });
 
   afterEach(() => {
-    // Aggressively clean up storage after each test
-    try {
-      rmSync(storagePath);
-    } catch {
-      // File doesn't exist
-    }
-
-    // Double-check by trying again
-    try {
-      rmSync(storagePath);
-    } catch {
-      // Already deleted
-    }
+    // Clear mocks after each test
+    vi.clearAllMocks();
   });
 
   describe('initialization', () => {
@@ -129,7 +149,7 @@ describe('PositionManager', () => {
 
       expect(existsSync(storagePath)).toBe(true);
 
-      const content = readFileSync(storagePath, 'utf-8');
+      const content = mockFileStore[storagePath];
       const data = JSON.parse(content) as unknown[];
       expect(data).toHaveLength(1);
     });
