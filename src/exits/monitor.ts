@@ -45,7 +45,7 @@ export class ExitMonitor {
   private handlers: Set<ExitSignalHandler>;
   private monitoringInterval: NodeJS.Timeout | null = null;
   private positions: Map<string, Position>;
-  private isMonitoring: boolean = false;
+  private isMonitoring = false;
 
   /**
    * Creates a new ExitMonitor instance
@@ -241,7 +241,7 @@ export class ExitMonitor {
    */
   private checkPosition(position: Position): void {
     // Skip if position doesn't have a current price
-    if (!position.currentPrice) {
+    if (position.currentPrice === undefined) {
       return;
     }
 

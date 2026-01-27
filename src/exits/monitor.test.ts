@@ -10,6 +10,7 @@
  * - Monitoring interval behavior
  * - Error handling
  */
+/* eslint-disable @typescript-eslint/no-unused-vars */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { ExitMonitor, createExitMonitor, type ExitSignalHandler } from './monitor.js';
@@ -741,7 +742,7 @@ describe('ExitMonitor', () => {
       // Initial check on start triggers both signals
       expect(handler).toHaveBeenCalledTimes(2);
 
-      const signals = handler.mock.calls.map((call) => call[0]) as ExitSignal[];
+      const signals = handler.mock.calls.map((call) => call[0] as ExitSignal);
       const types = signals.map((s) => s.type).sort();
       expect(types).toEqual(['stop_loss', 'take_profit']);
 
