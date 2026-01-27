@@ -20,5 +20,8 @@ export type {
 
 export { TechnicalFilter, createTechnicalFilter, TECHNICAL_SCORE } from './technical.js';
 
+export { SocialFilter, createSocialFilter, SOCIAL_SCORE } from './social.js';
+export type { ISocialApiService } from './social.js';
+
 // Types
 export type { Filter, FilterCategory, FilterRegistry } from './types.js';
