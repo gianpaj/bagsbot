@@ -18,5 +18,7 @@ export type {
   CreatorFilterDependencies,
 } from './creator.js';
 
+export { TechnicalFilter, createTechnicalFilter, TECHNICAL_SCORE } from './technical.js';
+
 // Types
 export type { Filter, FilterCategory, FilterRegistry } from './types.js';
