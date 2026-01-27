@@ -1,0 +1,48 @@
+{
+  "name": "bagsbot",
+  "version": "1.0.0",
+  "description": "Bags Sniper Bot - A CLI bot for monitoring Solana token launches on the Bags platform",
+  "main": "dist/index.js",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsx src/index.ts",
+    "test": "vitest",
+    "test:run": "vitest run",
+    "lint": "eslint src",
+    "lint:fix": "eslint src --fix",
+    "format": "prettier --write \"src/**/*.ts\"",
+    "format:check": "prettier --check \"src/**/*.ts\"",
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": [
+    "solana",
+    "bags",
+    "sniper",
+    "bot",
+    "cli"
+  ],
+  "author": "",
+  "license": "ISC",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.2",
+    "@types/node": "^25.0.10",
+    "@typescript-eslint/eslint-plugin": "^8.54.0",
+    "@typescript-eslint/parser": "^8.54.0",
+    "eslint": "^9.39.2",
+    "prettier": "^3.8.1",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.54.0",
+    "vitest": "^4.0.18"
+  },
+  "dependencies": {
+    "@bagsfm/bags-sdk": "^1.2.7",
+    "@opentui/core": "^0.1.75",
+    "@solana/web3.js": "^1.98.4"
+  }
+}
