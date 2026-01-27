@@ -58,6 +58,15 @@ Launch Detected
 
 ## 🚀 QUICKSTART
 
+### Prerequisites
+
+- **Node.js** 18.0.0 or higher
+- **Zig** (required for terminal UI rendering via OpenTUI)
+  - Download from https://ziglang.org/download
+  - Add to your PATH
+
+### Installation
+
 ```bash
 # Clone it
 git clone https://github.com/gianpaj/bagsbot
