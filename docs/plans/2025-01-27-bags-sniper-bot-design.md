@@ -653,16 +653,16 @@ export const mockLaunchEvent: LaunchpadLaunchEvent = {
 
 ```bash
 # Run all tests
-npm test
+bun test
 
 # Run with coverage
-npm run test:coverage
+bun run test:coverage
 
 # Run specific test file
-npm test -- src/filters/creator.test.ts
+bun test -- src/filters/creator.test.ts
 
 # Run integration tests (requires API keys)
-npm run test:integration
+bun run test:integration
 ```
 
 ---
@@ -860,7 +860,7 @@ git clone <repo-url>
 cd bagsbot
 
 # Install dependencies
-npm install
+bun install
 
 # Copy environment template
 cp .env.example .env
@@ -871,25 +871,25 @@ cp .env.example .env
 # WALLET_PATH=~/.config/solana/id.json
 
 # Build
-npm run build
+bun run build
 
 # Run
-npm start
+bun start
 ```
 
 ### Development
 ```bash
 # Run in development mode with hot reload
-npm run dev
+bun run dev
 
 # Run tests
-npm test
+bun test
 
 # Lint
-npm run lint
+bun run lint
 
 # Format
-npm run format
+bun run format
 ```
 
 ---

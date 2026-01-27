@@ -121,7 +121,7 @@ git clone https://github.com/gianpaj/bagsbot.git
 cd bagsbot
 
 # Install dependencies
-pnpm install
+bun install
 
 # Copy the environment template
 cp .env.example .env
@@ -129,10 +129,10 @@ cp .env.example .env
 # Edit .env with your configuration (see Configuration section)
 
 # Build the project
-pnpm run build
+bun run build
 
 # Run the bot
-pnpm start
+bun start
 ```
 
 ## Configuration
@@ -245,10 +245,10 @@ The bot uses a configuration file at `~/.bagsbot/config.json`. Default values ar
 
 ```bash
 # Production mode (uses compiled JavaScript)
-pnpm start
+bun start
 
 # Development mode (uses TypeScript directly with hot reload)
-pnpm run dev
+bun run dev
 ```
 
 ### Keybindings
@@ -338,31 +338,31 @@ pnpm run dev
 
 ```bash
 # Run in development mode
-pnpm run dev
+bun run dev
 
 # Run tests
-pnpm test
+bun test
 
 # Run tests once (no watch)
-pnpm run test:run
+bun run test:run
 
 # Type check
-pnpm run typecheck
+bun run typecheck
 
 # Lint
-pnpm run lint
+bun run lint
 
 # Fix lint issues
-pnpm run lint:fix
+bun run lint:fix
 
 # Format code
-pnpm run format
+bun run format
 
 # Check formatting
-pnpm run format:check
+bun run format:check
 
 # Build
-pnpm run build
+bun run build
 ```
 
 ### Project Structure
