@@ -26,7 +26,7 @@ import { TradeExecutor } from './trading/executor.js';
 import type { IBagsTradeService } from './trading/executor.js';
 import { WalletManager } from './trading/wallet.js';
 import { PositionManager } from './positions/manager.js';
-import { ExitMonitor, type ExitSignalHandler } from './exits/monitor.js';
+import { ExitMonitor } from './exits/monitor.js';
 import type { BotConfig } from './types/config.js';
 import type { LaunchpadLaunchEvent } from './types/launch.js';
 import type { ExitSignal } from './types/positions.js';
