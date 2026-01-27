@@ -170,10 +170,10 @@ export class PositionManager {
    * @example
    * ```typescript
    * manager.setConnection(connection);
-   * await manager.updatePrices();
+   * manager.updatePrices();
    * ```
    */
-  async updatePrices(): Promise<void> {
+  updatePrices(): void {
     if (this.connection === null) {
       throw new Error('Connection not set. Call setConnection() first.');
     }

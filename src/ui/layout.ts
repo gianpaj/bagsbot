@@ -16,9 +16,9 @@ import type { BotConfig, Position } from '../types/index.js';
 import type { AppState, ScreenState } from './app.js';
 
 // Extract Box and Text factory functions
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+ 
 const Box: any = (OpenTUIRenderables as any).Box;
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+ 
 const Text: any = (OpenTUIRenderables as any).Text;
 
 /**
@@ -84,7 +84,7 @@ function createOpportunitySection(): unknown {
  */
 function createPositionsSection(positions: Position[] = []): unknown {
   const children: unknown[] = [
-    Text({ id: 'positions-title', content: `OPEN POSITIONS (${positions.length})` }),
+    Text({ id: 'positions-title', content: `OPEN POSITIONS (${String(positions.length)})` }),
   ];
 
   // Add position rows (showing mock data for now)
@@ -102,7 +102,7 @@ function createPositionsSection(positions: Position[] = []): unknown {
 
       children.push(
         Text({
-          id: `position-${index}`,
+          id: `position-${String(index)}`,
           content: `${position.tokenSymbol}  ${pnlPercent >= 0 ? '+' : ''}${pnlPercent.toFixed(1)}%  ${pnlDirection}  ${position.entrySol.toFixed(2)} SOL → ${currentValue.toFixed(2)} SOL`,
         })
       );
@@ -112,7 +112,7 @@ function createPositionsSection(positions: Position[] = []): unknown {
       children.push(
         Text({
           id: 'positions-more',
-          content: `... and ${positions.length - 5} more`,
+          content: `... and ${String(positions.length - 5)} more`,
         })
       );
     }

@@ -9,9 +9,9 @@
  */
 
 // Type aliases for OpenTUI types
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+ 
 export type CliRenderer = any;
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+ 
 export type RenderContext = any;
 
 import * as OpenTUI from '@opentui/core';
@@ -20,9 +20,9 @@ import { logger } from '../utils/logger.js';
 import { createMainLayout } from './layout.js';
 
 // Extract functions from OpenTUI module
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+ 
 const createCliRenderer: any = (OpenTUI as any).createCliRenderer;
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+ 
 const RootRenderable: any = (OpenTUI as any).RootRenderable;
 
 /**
@@ -67,7 +67,7 @@ export interface AppConfig {
  */
 export class OpenTUIApp {
   private renderer: CliRenderer | null = null;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   private rootRenderable: any | null = null;
   private config: AppConfig;
   private state: AppState;
@@ -114,7 +114,7 @@ export class OpenTUIApp {
       this.setupKeyboardInput();
 
       // Create the root renderable (main container) - needs RenderContext from renderer
-      this.rootRenderable = new RootRenderable(this.renderer as RenderContext);
+      this.rootRenderable = new RootRenderable(this.renderer);
 
       // Create and add the main layout
       const mainLayout = createMainLayout(this.state, this.config.botConfig);
@@ -159,7 +159,7 @@ export class OpenTUIApp {
    * - Quit action (Q for quit)
    */
   private setupKeyboardInput(): void {
-    if (!this.renderer) {
+    if (this.renderer === null) {
       this.logger.warn('Renderer not initialized when setting up keyboard input');
       return;
     }
@@ -185,9 +185,7 @@ export class OpenTUIApp {
           }
           break;
         case 'q':
-          this.stop().catch((error) => {
-            this.logger.error('Error stopping application', { error });
-          });
+          this.stop();
           break;
         // Buy action
         case 'b':
@@ -241,7 +239,7 @@ export class OpenTUIApp {
    * Update the layout based on current state
    */
   private updateLayout(): void {
-    if (!this.rootRenderable || !this.renderer) {
+    if (this.rootRenderable === null || this.renderer === null) {
       return;
     }
 
@@ -257,7 +255,7 @@ export class OpenTUIApp {
     this.rootRenderable.add(newLayout);
 
     // Request a render update
-    if (this.renderer) {
+    if (this.renderer !== null) {
       this.renderer.requestRender();
     }
 
@@ -326,7 +324,7 @@ export class OpenTUIApp {
    * Request a renderer update
    */
   requestRender(): void {
-    if (this.renderer) {
+    if (this.renderer !== null) {
       this.renderer.requestRender();
     }
   }
@@ -334,12 +332,12 @@ export class OpenTUIApp {
   /**
    * Stop the application and cleanup resources
    */
-  async stop(): Promise<void> {
+  stop(): void {
     try {
       this.logger.info('Stopping OpenTUI application');
       this.state.isRunning = false;
 
-      if (this.renderer) {
+      if (this.renderer !== null) {
         this.renderer.destroy();
         this.renderer = null;
       }
@@ -351,7 +349,7 @@ export class OpenTUIApp {
         error:
           error instanceof Error
             ? { message: error.message, stack: error.stack }
-            : error,
+            : String(error),
       });
       throw error;
     }

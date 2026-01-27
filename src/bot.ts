@@ -202,13 +202,7 @@ export class BagsBot {
 
     // Subscribe to exit signals
     const unsubExit = this.exitMonitor.onExitSignal((signal) => {
-      this.handleExitSignal(signal).catch((error: unknown) => {
-        const message = error instanceof Error ? error.message : String(error);
-        this.logger.error('Error handling exit signal', {
-          error: message,
-          type: signal.type,
-        });
-      });
+      this.handleExitSignal(signal);
     });
     this.unsubscribeHandlers.push(unsubExit);
 
@@ -221,9 +215,9 @@ export class BagsBot {
    * Set up signal handlers for graceful shutdown
    */
   private setupSignalHandlers(): void {
-    const handleShutdownSignal = (signal: NodeJS.Signals) => {
+    const handleShutdownSignal = (signal: NodeJS.Signals): void => {
       this.logger.info(`Received ${signal}, initiating graceful shutdown`);
-      this.shutdown().catch((error) => {
+      this.shutdown().catch((error: unknown) => {
         const message = error instanceof Error ? error.message : String(error);
         this.logger.error('Error during shutdown', { error: message });
         process.exit(1);
@@ -309,12 +303,12 @@ export class BagsBot {
 
       // Confirm in alert system
       const opportunity = this.alertSystem.getCurrentOpportunity();
-      if (!opportunity?.id || opportunity.id !== opportunityId) {
+      if (opportunity?.id !== opportunityId) {
         this.logger.warn('Opportunity not found or not current', { opportunityId });
         return;
       }
 
-      await this.alertSystem.confirm(opportunityId, amount);
+      this.alertSystem.confirm(opportunityId, amount);
 
       // Check position limits
       const openPositions = this.positionManager.getOpenPositions();
@@ -377,7 +371,7 @@ export class BagsBot {
    *
    * @param opportunityId - The ID of the rejected opportunity
    */
-  async handleOpportunityRejection(opportunityId: string): Promise<void> {
+  handleOpportunityRejection(opportunityId: string): void {
     try {
       this.logger.info('Rejecting opportunity', { opportunityId });
       this.alertSystem.reject(opportunityId);
@@ -396,7 +390,7 @@ export class BagsBot {
    * When a position reaches take-profit or stop-loss, the exit monitor
    * emits a signal. This handler processes it.
    */
-  private async handleExitSignal(signal: ExitSignal): Promise<void> {
+  private handleExitSignal(signal: ExitSignal): void {
     this.logger.info('Processing exit signal', {
       type: signal.type,
       currentPrice: signal.currentPrice,
@@ -406,16 +400,10 @@ export class BagsBot {
     try {
       // Note: In a real implementation, this would execute the exit trade
       // For now, we just log it and update the UI
-      const position = signal.position;
-      if (!position) {
-        this.logger.warn('No position in exit signal');
-        return;
-      }
-
       this.logger.info('Exit signal details', {
-        mint: position.mint,
-        tokenSymbol: position.tokenSymbol,
-        entryPrice: position.entryPrice,
+        mint: signal.position.mint,
+        tokenSymbol: signal.position.tokenSymbol,
+        entryPrice: signal.position.entryPrice,
         currentPrice: signal.currentPrice,
         type: signal.type,
       });
@@ -481,7 +469,7 @@ export class BagsBot {
       this.isRunning = false;
 
       // Stop accepting new events
-      this.unsubscribeHandlers.forEach((unsub) => unsub());
+      this.unsubscribeHandlers.forEach((unsub) => { unsub(); });
       this.unsubscribeHandlers = [];
 
       // Stop exit monitor
@@ -493,7 +481,7 @@ export class BagsBot {
       this.logger.debug('Restream listener disconnected');
 
       // Stop UI
-      await this.uiApp.stop();
+      this.uiApp.stop();
       this.logger.debug('UI stopped');
 
       // Clean up alert system
@@ -512,7 +500,12 @@ export class BagsBot {
    *
    * @returns Object containing bot state information
    */
-  getState() {
+  getState(): {
+    isRunning: boolean;
+    openPositions: number;
+    pendingOpportunities: number;
+    connectionStatus: string;
+  } {
     return {
       isRunning: this.isRunning,
       openPositions: this.positionManager.getOpenPositions().length,

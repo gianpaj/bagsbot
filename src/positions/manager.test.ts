@@ -465,24 +465,24 @@ describe('PositionManager', () => {
   });
 
   describe('updatePrices', () => {
-    it('should throw error if connection not set', async () => {
-      await expect(manager.updatePrices()).rejects.toThrow('Connection not set');
+    it('should throw error if connection not set', () => {
+      expect(() => manager.updatePrices()).toThrow('Connection not set');
     });
 
-    it('should handle empty positions', async () => {
+    it('should handle empty positions', () => {
       const mockConnection = {} as any;
       manager.setConnection(mockConnection);
 
-      await expect(manager.updatePrices()).resolves.not.toThrow();
+      expect(() => manager.updatePrices()).not.toThrow();
     });
 
-    it('should handle positions with no updates', async () => {
+    it('should handle positions with no updates', () => {
       const mockConnection = {} as any;
       manager.setConnection(mockConnection);
 
       manager.addPosition(mockTradeResult, mockLaunchEvent, 0.00001, 10000, 0.1);
 
-      await expect(manager.updatePrices()).resolves.not.toThrow();
+      expect(() => manager.updatePrices()).not.toThrow();
     });
   });
 

@@ -182,7 +182,7 @@ describe('AlertSystem', () => {
       alertSystem.queue(opp2);
 
       // Confirm the first one
-      await alertSystem.confirm('opp1', 1.0);
+      alertSystem.confirm('opp1', 1.0);
 
       // Should now return the second one
       expect(alertSystem.getCurrentOpportunity()?.id).toBe('opp2');
@@ -194,7 +194,7 @@ describe('AlertSystem', () => {
       const opp = createMockOpportunity({ id: 'opp1' });
       alertSystem.queue(opp);
 
-      await alertSystem.confirm('opp1', 2.0);
+      alertSystem.confirm('opp1', 2.0);
 
       expect(opp.status).toBe('confirmed');
       expect(opp.suggestedAmount).toBe(2.0);
@@ -204,7 +204,7 @@ describe('AlertSystem', () => {
       const opp = createMockOpportunity({ id: 'opp1' });
       alertSystem.queue(opp);
 
-      await alertSystem.confirm('opp1', 1.0);
+      alertSystem.confirm('opp1', 1.0);
 
       expect(alertSystem.getPendingCount()).toBe(0);
       expect(alertSystem.getCurrentOpportunity()).toBeNull();
@@ -214,7 +214,7 @@ describe('AlertSystem', () => {
       const opp = createMockOpportunity({ id: 'opp1' });
       alertSystem.queue(opp);
 
-      await alertSystem.confirm('opp1', 1.0);
+      alertSystem.confirm('opp1', 1.0);
 
       const history = alertSystem.getHistory();
       expect(history).toHaveLength(1);
@@ -226,7 +226,7 @@ describe('AlertSystem', () => {
       const opp = createMockOpportunity({ id: 'opp1' });
       alertSystem.queue(opp);
 
-      await alertSystem.confirm('opp1', 1.0);
+      alertSystem.confirm('opp1', 1.0);
 
       // Wait for the timeout period to pass
       await new Promise((resolve) => setTimeout(resolve, 150));
@@ -236,26 +236,26 @@ describe('AlertSystem', () => {
       expect(history[0].status).toBe('confirmed');
     });
 
-    it('should throw error if opportunity not found', async () => {
-      await expect(alertSystem.confirm('nonexistent', 1.0)).rejects.toThrow(
+    it('should throw error if opportunity not found', () => {
+      expect(() => alertSystem.confirm('nonexistent', 1.0)).toThrow(
         /not found/i
       );
     });
 
-    it('should throw error if opportunity is not pending', async () => {
+    it('should throw error if opportunity is not pending', () => {
       const opp1 = createMockOpportunity({ id: 'opp1' });
       const opp2 = createMockOpportunity({ id: 'opp2' });
       alertSystem.queue(opp1);
       alertSystem.queue(opp2);
 
       // Confirm the first one
-      await alertSystem.confirm('opp1', 1.0);
+      alertSystem.confirm('opp1', 1.0);
 
       // Try to confirm the second one twice
-      await alertSystem.confirm('opp2', 1.0);
+      alertSystem.confirm('opp2', 1.0);
 
       // Try to confirm again - should fail because opp2 is no longer pending
-      await expect(alertSystem.confirm('opp2', 2.0)).rejects.toThrow(
+      expect(() => alertSystem.confirm('opp2', 2.0)).toThrow(
         /not found/i
       );
     });
@@ -308,7 +308,7 @@ describe('AlertSystem', () => {
     });
 
     it('should throw error if opportunity not found', () => {
-      expect(() => alertSystem.reject('nonexistent')).toThrow(/not found/i);
+      expect(() => { alertSystem.reject('nonexistent'); }).toThrow(/not found/i);
     });
 
     it('should throw error if opportunity is not pending', async () => {
@@ -316,10 +316,10 @@ describe('AlertSystem', () => {
       alertSystem.queue(opp);
 
       // Confirm it first
-      await alertSystem.confirm('opp1', 1.0);
+      alertSystem.confirm('opp1', 1.0);
 
       // Try to reject an already-confirmed opportunity - it won't be in the queue
-      expect(() => alertSystem.reject('opp1')).toThrow(/not found/i);
+      expect(() => { alertSystem.reject('opp1'); }).toThrow(/not found/i);
     });
   });
 
@@ -335,7 +335,7 @@ describe('AlertSystem', () => {
       alertSystem.queue(opp1);
       alertSystem.queue(opp2);
 
-      await alertSystem.confirm('opp1', 1.0);
+      alertSystem.confirm('opp1', 1.0);
 
       const history = alertSystem.getHistory();
       expect(history).toHaveLength(1);
@@ -389,7 +389,7 @@ describe('AlertSystem', () => {
       alertSystem.queue(opp2);
       alertSystem.queue(opp3);
 
-      await alertSystem.confirm('opp1', 1.0);
+      alertSystem.confirm('opp1', 1.0);
       alertSystem.reject('opp2');
 
       const history = alertSystem.getHistory();
@@ -434,7 +434,7 @@ describe('AlertSystem', () => {
       alertSystem.queue(opp2);
 
       // Confirm the first one
-      await alertSystem.confirm('opp1', 1.0);
+      alertSystem.confirm('opp1', 1.0);
 
       // Wait for what would have been the expiration time
       await new Promise((resolve) => setTimeout(resolve, 150));
@@ -456,11 +456,11 @@ describe('AlertSystem', () => {
       alertSystem.queue(opp);
 
       // First confirm
-      await alertSystem.confirm('opp1', 1.0);
+      alertSystem.confirm('opp1', 1.0);
       expect(opp.status).toBe('confirmed');
 
       // Try to reject should fail
-      expect(() => alertSystem.reject('opp1')).toThrow();
+      expect(() => { alertSystem.reject('opp1'); }).toThrow();
     });
 
     it('should handle rapid queue operations', async () => {
@@ -468,13 +468,13 @@ describe('AlertSystem', () => {
         createMockOpportunity({ id: `opp${i}` })
       );
 
-      opps.forEach((opp) => alertSystem.queue(opp));
+      opps.forEach((opp) => { alertSystem.queue(opp); });
 
       expect(alertSystem.getPendingCount()).toBe(10);
 
       // Confirm first 5
       for (let i = 0; i < 5; i++) {
-        await alertSystem.confirm(`opp${i}`, 1.0);
+        alertSystem.confirm(`opp${i}`, 1.0);
       }
 
       expect(alertSystem.getPendingCount()).toBe(5);
@@ -491,7 +491,7 @@ describe('AlertSystem', () => {
         createMockOpportunity({ id: `opp${i}` })
       );
 
-      opps.forEach((opp) => smallSystem.queue(opp));
+      opps.forEach((opp) => { smallSystem.queue(opp); });
 
       for (let i = 0; i < 5; i++) {
         await smallSystem.confirm(`opp${i}`, 1.0);
@@ -510,7 +510,7 @@ describe('AlertSystem', () => {
       const opp = createMockOpportunity({ id: 'opp1', suggestedAmount: 1.0 });
       alertSystem.queue(opp);
 
-      await alertSystem.confirm('opp1', 5.0);
+      alertSystem.confirm('opp1', 5.0);
 
       expect(opp.suggestedAmount).toBe(5.0);
     });

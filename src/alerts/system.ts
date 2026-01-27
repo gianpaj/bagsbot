@@ -60,7 +60,7 @@ export class AlertSystem {
   private history: Opportunity[] = [];
 
   /** Map of opportunity IDs to their timeout handlers */
-  private expirationTimers: Map<string, NodeJS.Timeout> = new Map();
+  private expirationTimers = new Map<string, NodeJS.Timeout>();
 
   /** Configuration for the alert system */
   private config: Required<AlertSystemConfig>;
@@ -113,7 +113,7 @@ export class AlertSystem {
    * @param amount The amount to trade (may differ from suggested amount)
    * @returns Promise that resolves when the opportunity is confirmed
    */
-  async confirm(id: string, amount: number): Promise<void> {
+  confirm(id: string, amount: number): void {
     const opportunity = this.opportunityQueue.find((opp) => opp.id === id);
 
     if (!opportunity) {
@@ -183,7 +183,7 @@ export class AlertSystem {
   private expireOpportunity(id: string): void {
     const opportunity = this.opportunityQueue.find((opp) => opp.id === id);
 
-    if (!opportunity || opportunity.status !== 'pending') {
+    if (opportunity?.status !== 'pending') {
       return;
     }
 

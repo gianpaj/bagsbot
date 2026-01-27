@@ -117,7 +117,11 @@ export class TechnicalFilter implements Filter<TechnicalFilterConfig> {
       }
     } else {
       // If not validating, just check if image is provided and not a placeholder
-      if (launch.image && !this.isPlaceholderUrl(launch.image)) {
+      if (
+        launch.image !== undefined &&
+        launch.image.trim() !== '' &&
+        !this.isPlaceholderUrl(launch.image)
+      ) {
         details.validImageUrl = true;
         details.imageUrlScore = TECHNICAL_SCORE.VALID_IMAGE_URL;
       }
@@ -163,23 +167,19 @@ export class TechnicalFilter implements Filter<TechnicalFilterConfig> {
    * Check if metadata is complete (name, symbol, image)
    */
   private isMetadataComplete(launch: LaunchpadLaunchEvent): boolean {
-    return Boolean(
-      launch.name &&
-        launch.name.trim() !== '' &&
-        launch.symbol &&
-        launch.symbol.trim() !== '' &&
-        launch.image &&
-        launch.image.trim() !== ''
-    );
+    // name and symbol are required fields, image is optional
+    const hasName = launch.name.trim() !== '';
+    const hasSymbol = launch.symbol.trim() !== '';
+    const hasImage =
+      launch.image !== undefined && launch.image.trim() !== '';
+    return hasName && hasSymbol && hasImage;
   }
 
   /**
    * Check if description is present and non-empty
    */
   private isDescriptionPresent(launch: LaunchpadLaunchEvent): boolean {
-    return Boolean(
-      launch.description && launch.description.trim().length > 0
-    );
+    return launch.description !== undefined && launch.description.trim().length > 0;
   }
 
   /**
@@ -187,13 +187,13 @@ export class TechnicalFilter implements Filter<TechnicalFilterConfig> {
    */
   private countSocialLinks(launch: LaunchpadLaunchEvent): number {
     let count = 0;
-    if (launch.telegram && launch.telegram.trim() !== '') {
+    if (launch.telegram !== undefined && launch.telegram.trim() !== '') {
       count += 1;
     }
-    if (launch.twitter && launch.twitter.trim() !== '') {
+    if (launch.twitter !== undefined && launch.twitter.trim() !== '') {
       count += 1;
     }
-    if (launch.website && launch.website.trim() !== '') {
+    if (launch.website !== undefined && launch.website.trim() !== '') {
       count += 1;
     }
     return count;
@@ -212,7 +212,7 @@ export class TechnicalFilter implements Filter<TechnicalFilterConfig> {
    * Validate that an image URL is accessible and not a placeholder
    */
   private async isValidImageUrl(imageUrl?: string): Promise<boolean> {
-    if (!imageUrl || imageUrl.trim() === '') {
+    if (imageUrl === undefined || imageUrl.trim() === '') {
       return false;
     }
 
@@ -237,7 +237,8 @@ export class TechnicalFilter implements Filter<TechnicalFilterConfig> {
       }
 
       const contentType = response.headers.get('content-type');
-      if (!contentType || !contentType.startsWith('image/')) {
+      const isImage = contentType?.startsWith('image/') ?? false;
+      if (!isImage) {
         return false;
       }
 

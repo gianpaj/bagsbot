@@ -232,10 +232,10 @@ describe('OpenTUIApp', () => {
   });
 
   describe('Application Lifecycle', () => {
-    it('should handle graceful shutdown', async () => {
+    it('should handle graceful shutdown', () => {
       // Note: start() requires actual OpenTUI initialization
       // so we just test that stop() can be called without errors
-      await expect(app.stop()).resolves.not.toThrow();
+      expect(() => app.stop()).not.toThrow();
     });
 
     it('should return correct state after operations', () => {
@@ -264,7 +264,7 @@ describe('OpenTUIApp', () => {
   describe('Request Render', () => {
     it('should call requestRender without errors', () => {
       // Should not throw even if renderer is not initialized
-      expect(() => app.requestRender()).not.toThrow();
+      expect(() => { app.requestRender(); }).not.toThrow();
     });
   });
 });
