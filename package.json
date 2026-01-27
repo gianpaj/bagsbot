@@ -33,6 +33,7 @@
     "@types/node": "^25.0.10",
     "@typescript-eslint/eslint-plugin": "^8.54.0",
     "@typescript-eslint/parser": "^8.54.0",
+    "@vitest/coverage-v8": "^4.0.18",
     "eslint": "^9.39.2",
     "prettier": "^3.8.1",
     "tsx": "^4.21.0",
@@ -43,6 +44,7 @@
   "dependencies": {
     "@bagsfm/bags-sdk": "^1.2.7",
     "@opentui/core": "^0.1.75",
-    "@solana/web3.js": "^1.98.4"
+    "@solana/web3.js": "^1.98.4",
+    "zod": "^4.3.6"
   }
 }
