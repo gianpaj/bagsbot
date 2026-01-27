@@ -45,6 +45,8 @@ export interface UIConfig {
   opportunityTimeoutSec: number;
   /** Whether to play sounds for alerts */
   soundEnabled: boolean;
+  /** Run in headless mode (no terminal UI) */
+  headless?: boolean;
 }
 
 /**

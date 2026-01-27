@@ -92,6 +92,7 @@ export const DEFAULT_EXIT_CONFIG: ExitConfig = {
 export const DEFAULT_UI_CONFIG: UIConfig = {
   opportunityTimeoutSec: 60,
   soundEnabled: true,
+  headless: true, // Default to headless until OpenTUI issues are resolved
 };
 
 /**

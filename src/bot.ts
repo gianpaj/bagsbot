@@ -76,13 +76,14 @@ export class BagsBot {
   private filterPipeline: FilterPipeline;
   private scoringEngine: ScoringEngine;
   private alertSystem: AlertSystem;
-  private uiApp: OpenTUIApp;
+  private uiApp: OpenTUIApp | null;
   private tradeExecutor: TradeExecutor;
   private walletManager: WalletManager;
   private positionManager: PositionManager;
   private exitMonitor: ExitMonitor;
   private connection: Connection;
   private isRunning = false;
+  private headless: boolean;
   private unsubscribeHandlers: (() => void)[] = [];
   private logger = logger.child({ module: 'bot' });
 
@@ -93,6 +94,7 @@ export class BagsBot {
    */
   constructor(botConfig: BagsBotConfig) {
     this.config = botConfig.config;
+    this.headless = botConfig.config.ui.headless ?? false;
 
     // Initialize Solana connection
     this.connection = new Connection(this.config.solanaRpcUrl, 'confirmed');
@@ -113,10 +115,17 @@ export class BagsBot {
       this.connection,
       this.config.trading
     );
-    this.uiApp = new OpenTUIApp({
-      botConfig: this.config,
-      opportunityTimeoutMs: this.config.ui.opportunityTimeoutSec * 1000,
-    });
+
+    // Only initialize UI if not in headless mode
+    if (this.headless) {
+      this.uiApp = null;
+      this.logger.info('Running in headless mode - no terminal UI');
+    } else {
+      this.uiApp = new OpenTUIApp({
+        botConfig: this.config,
+        opportunityTimeoutMs: this.config.ui.opportunityTimeoutSec * 1000,
+      });
+    }
 
     // Initialize position manager connection
     this.positionManager.setConnection(this.connection);
@@ -127,6 +136,7 @@ export class BagsBot {
       walletPath: this.config.walletPath,
       maxOpenPositions: this.config.maxOpenPositions,
       maxPositionPercent: this.config.maxPositionPercent,
+      headless: this.headless,
     });
   }
 
@@ -156,9 +166,11 @@ export class BagsBot {
         throw error;
       }
 
-      // Start the UI
-      await this.uiApp.start();
-      this.logger.info('UI started successfully');
+      // Start the UI (if not headless)
+      if (this.uiApp !== null) {
+        await this.uiApp.start();
+        this.logger.info('UI started successfully');
+      }
 
       // Connect to Restream listener
       await this.restreamListener.connect();
@@ -282,8 +294,19 @@ export class BagsBot {
       score,
     });
 
-    // Display in UI
-    this.uiApp.showOpportunity(opportunity);
+    // Display in UI (if not headless)
+    if (this.uiApp !== null) {
+      this.uiApp.showOpportunity(opportunity);
+    } else {
+      // In headless mode, log the opportunity details
+      this.logger.info('NEW OPPORTUNITY DETECTED', {
+        mint: event.mint,
+        name: event.name,
+        symbol: event.symbol,
+        score,
+        suggestedAmount: opportunity.suggestedAmount,
+      });
+    }
   }
 
   /**
@@ -354,8 +377,10 @@ export class BagsBot {
       // Start monitoring position
       this.exitMonitor.addPosition(position);
 
-      // Update UI
-      this.uiApp.updatePositions(this.positionManager.getOpenPositions());
+      // Update UI (if not headless)
+      if (this.uiApp !== null) {
+        this.uiApp.updatePositions(this.positionManager.getOpenPositions());
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.logger.error('Error executing trade', {
@@ -408,8 +433,10 @@ export class BagsBot {
         type: signal.type,
       });
 
-      // Update UI
-      this.uiApp.updatePositions(this.positionManager.getOpenPositions());
+      // Update UI (if not headless)
+      if (this.uiApp !== null) {
+        this.uiApp.updatePositions(this.positionManager.getOpenPositions());
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.logger.error('Error processing exit signal', {
@@ -480,9 +507,11 @@ export class BagsBot {
       await this.restreamListener.disconnect();
       this.logger.debug('Restream listener disconnected');
 
-      // Stop UI
-      this.uiApp.stop();
-      this.logger.debug('UI stopped');
+      // Stop UI (if not headless)
+      if (this.uiApp !== null) {
+        this.uiApp.stop();
+        this.logger.debug('UI stopped');
+      }
 
       // Clean up alert system
       this.alertSystem.destroy();
