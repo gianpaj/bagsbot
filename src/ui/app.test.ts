@@ -1,45 +1,33 @@
-/**
- * Tests for OpenTUI Application
- *
- * Tests the app initialization, state management, screen navigation,
- * and keyboard input handling (without requiring actual terminal rendering).
- */
-
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { OpenTUIApp, type AppConfig, type ScreenState } from './app.js';
-import type { BotConfig } from '../types/index.js';
+import { OpenTUIApp, type AppConfig } from './app.js';
 
-// Mock the OpenTUI core module
+let keyHandler: ((data: Buffer) => void) | undefined;
+
 vi.mock('@opentui/core', () => ({
   createCliRenderer: vi.fn().mockResolvedValue({
     add: vi.fn(),
     remove: vi.fn(),
-    on: vi.fn(),
     destroy: vi.fn(),
     requestRender: vi.fn(),
+    on: vi.fn((event: string, handler: (data: Buffer) => void) => {
+      if (event === 'key') {
+        keyHandler = handler;
+      }
+    }),
   }),
-  RootRenderable: vi.fn(() => ({
-    id: 'app-root',
-    add: vi.fn(),
-    remove: vi.fn(),
-    getChildren: vi.fn().mockReturnValue([]),
-  })),
-  Box: vi.fn((options) => ({
-    ...options,
-  })),
-  Text: vi.fn((options) => ({
-    ...options,
-  })),
+  RootRenderable: vi.fn(
+    class {
+      add = vi.fn();
+      remove = vi.fn();
+      getChildren = vi.fn().mockReturnValue([]);
+    }
+  ),
 }));
 
-// Mock the layout module
 vi.mock('./layout.js', () => ({
-  createMainLayout: vi.fn(() => ({
-    id: 'main-layout',
-  })),
+  createMainLayout: vi.fn(() => ({ id: 'main-layout' })),
 }));
 
-// Mock the logger
 vi.mock('../utils/logger.js', () => ({
   logger: {
     child: vi.fn(() => ({
@@ -51,220 +39,133 @@ vi.mock('../utils/logger.js', () => ({
   },
 }));
 
+const mockBotConfig = {
+  bagsApiKey: 'test-key',
+  solanaRpcUrl: 'https://api.mainnet-beta.solana.com',
+  walletPath: '/path/to/wallet.json',
+  maxPositionPercent: 10,
+  maxOpenPositions: 5,
+  filters: {
+    creator: { requireVerifiedSocial: true, minFollowerCount: 100, minAccountAgeDays: 30, checkPreviousLaunches: true },
+    technical: { requireCompleteMetadata: true, requireDescription: true, requireSocialLinks: true, validateImageUrl: true },
+    social: { checkTwitterMentions: true, checkTelegramGroup: true, minCommunitySize: 1000 },
+    liquidity: { minInitialLiquiditySol: 5, maxBondingCurvePercent: 50, maxTopHolderPercent: 30 },
+  },
+  scoring: {
+    weights: { creator: 0.25, technical: 0.25, social: 0.25, liquidity: 0.25 },
+    minScoreToAlert: 60,
+    minScoreForHighConfidence: 75,
+  },
+  trading: { slippageBps: 500, priorityFeeLamports: 100000, maxRetries: 3 },
+  exits: { takeProfitPercent: 900, stopLossPercent: -50, checkIntervalMs: 5000, autoSellEnabled: false },
+  ui: { opportunityTimeoutSec: 30, soundEnabled: true },
+};
+
 describe('OpenTUIApp', () => {
   let app: OpenTUIApp;
   let config: AppConfig;
 
   beforeEach(() => {
+    keyHandler = undefined;
     config = {
-      botConfig: {
-        bagsApiKey: 'test-key',
-        solanaRpcUrl: 'https://api.mainnet-beta.solana.com',
-        walletPath: '/path/to/wallet.json',
-        maxPositionPercent: 10,
-        maxOpenPositions: 5,
-        filters: {
-          creator: {
-            minHistoryScore: 50,
-            maxRugScore: 20,
-          },
-          technical: {
-            mintAuthorityDisabled: true,
-            freezeAuthorityDisabled: true,
-          },
-          social: {
-            twitterVerified: false,
-            minFollowers: 100,
-          },
-          liquidity: {
-            minLiquiditySol: 1,
-            maxWhalePercent: 25,
-          },
-        },
-        scoring: {
-          weights: {
-            creator: 0.25,
-            technical: 0.25,
-            social: 0.25,
-            liquidity: 0.25,
-          },
-          minScoreToAlert: 60,
-          minScoreForHighConfidence: 75,
-        },
-        trading: {
-          slippagePercent: 1,
-          priorityFeeMultiplier: 1.5,
-        },
-        exits: {
-          takeProfitPercent: 900,
-          stopLossPercent: -50,
-          checkIntervalMs: 5000,
-          autoSellEnabled: false,
-        },
-        ui: {
-          opportunityTimeoutSec: 30,
-          soundEnabled: true,
-        },
-      },
-      opportunityTimeoutMs: 30000,
+      botConfig: mockBotConfig,
+      onBuyOpportunity: vi.fn(),
+      onSkipOpportunity: vi.fn(),
+      onQuit: vi.fn(),
     };
-
     app = new OpenTUIApp(config);
   });
 
-  describe('Initialization', () => {
-    it('should create an app instance with initial state', () => {
-      const state = app.getState();
-
-      expect(state.currentScreen).toBe('main');
-      expect(state.selectedOpportunity).toBeNull();
-      expect(state.positions).toHaveLength(0);
-      expect(state.isRunning).toBe(false);
-    });
-
-    it('should not be running initially', () => {
-      expect(app.isRunning()).toBe(false);
-    });
+  it('initializes with dashboard state', () => {
+    const state = app.getState();
+    expect(state.isRunning).toBe(false);
+    expect(state.dashboard.trackedItems).toHaveLength(0);
+    expect(state.dashboard.selectedItemId).toBeNull();
   });
 
-  describe('Screen Navigation', () => {
-    it('should navigate to positions screen', () => {
-      app.navigateToScreen('positions');
-      const state = app.getState();
-      expect(state.currentScreen).toBe('positions');
-    });
-
-    it('should navigate to history screen', () => {
-      app.navigateToScreen('history');
-      const state = app.getState();
-      expect(state.currentScreen).toBe('history');
-    });
-
-    it('should navigate to settings screen', () => {
-      app.navigateToScreen('settings');
-      const state = app.getState();
-      expect(state.currentScreen).toBe('settings');
-    });
-
-    it('should navigate back to main screen', () => {
-      app.navigateToScreen('positions');
-      app.navigateToScreen('main');
-      const state = app.getState();
-      expect(state.currentScreen).toBe('main');
-    });
-
-    it('should not navigate if already on the target screen', () => {
-      app.navigateToScreen('main');
-      const beforeState = app.getState();
-      app.navigateToScreen('main');
-      const afterState = app.getState();
-
-      expect(beforeState.currentScreen).toBe(afterState.currentScreen);
-    });
+  it('starts and sets up keyboard input', async () => {
+    await app.start();
+    expect(app.isRunning()).toBe(true);
+    expect(keyHandler).toBeTypeOf('function');
   });
 
-  describe('Position Management', () => {
-    it('should update positions list', () => {
-      const positions = [
-        {
-          id: 'pos-1',
-          mint: 'mint1',
-          tokenSymbol: '$TOKEN1',
-          entryPrice: 0.001,
-          tokensHeld: 100,
-          entrySol: 0.1,
-          entryTimestamp: new Date(),
-          currentPrice: 0.00225,
-          currentValue: 0.225,
-          pnlPercent: 125,
-          status: 'open' as const,
+  it('tracks launches and selects the newest item by default', () => {
+    app.trackLaunch({
+      mint: 'mint-1',
+      creator: 'creator-1',
+      name: 'Token One',
+      symbol: 'ONE',
+    });
+
+    const state = app.getState();
+    expect(state.dashboard.trackedItems).toHaveLength(1);
+    expect(state.dashboard.selectedItemId).toBe('mint-1');
+  });
+
+  it('moves selection with keyboard input', async () => {
+    await app.start();
+    app.trackLaunch({
+      mint: 'mint-1',
+      creator: 'creator-1',
+      name: 'Token One',
+      symbol: 'ONE',
+    });
+    app.trackLaunch({
+      mint: 'mint-2',
+      creator: 'creator-2',
+      name: 'Token Two',
+      symbol: 'TWO',
+    });
+
+    keyHandler?.(Buffer.from('j'));
+    let state = app.getState();
+    expect(state.dashboard.selectedItemId).toBe('mint-1');
+
+    keyHandler?.(Buffer.from('k'));
+    state = app.getState();
+    expect(state.dashboard.selectedItemId).toBe('mint-2');
+  });
+
+  it('sends buy action for the selected pending opportunity', async () => {
+    await app.start();
+    app.trackLaunch({
+      mint: 'mint-1',
+      creator: 'creator-1',
+      name: 'Token One',
+      symbol: 'ONE',
+    });
+    app.showOpportunity({
+      id: 'opp-1',
+      launch: {
+        mint: 'mint-1',
+        creator: 'creator-1',
+        name: 'Token One',
+        symbol: 'ONE',
+      },
+      filterResult: {
+        launch: {
+          mint: 'mint-1',
+          creator: 'creator-1',
+          name: 'Token One',
+          symbol: 'ONE',
         },
-        {
-          id: 'pos-2',
-          mint: 'mint2',
-          tokenSymbol: '$TOKEN2',
-          entryPrice: 0.002,
-          tokensHeld: 25,
-          entrySol: 0.05,
-          entryTimestamp: new Date(),
-          currentPrice: 0.0017,
-          currentValue: 0.042,
-          pnlPercent: -15,
-          status: 'open' as const,
+        totalScore: 82,
+        passed: true,
+        filters: {
+          creator: { passed: true, score: 80, details: 'good' },
+          technical: { passed: true, score: 81, details: 'good' },
+          social: { passed: true, score: 82, details: 'good' },
+          liquidity: { passed: true, score: 83, details: 'good' },
         },
-      ];
-
-      app.updatePositions(positions);
-      const state = app.getState();
-
-      expect(state.positions).toHaveLength(2);
-      expect(state.positions[0].tokenSymbol).toBe('$TOKEN1');
-      expect(state.positions[1].tokenSymbol).toBe('$TOKEN2');
+        timestamp: new Date(),
+      },
+      suggestedAmount: 0.2,
+      timestamp: new Date(),
+      status: 'pending',
     });
 
-    it('should handle empty positions list', () => {
-      app.updatePositions([]);
-      const state = app.getState();
-      expect(state.positions).toHaveLength(0);
-    });
-  });
+    keyHandler?.(Buffer.from('b'));
 
-  describe('Opportunity Management', () => {
-    it('should show opportunity and navigate to main screen', () => {
-      app.navigateToScreen('positions');
-      const opportunity = { mint: 'test-mint', symbol: '$TEST' };
-
-      app.showOpportunity(opportunity);
-      const state = app.getState();
-
-      expect(state.currentScreen).toBe('main');
-      expect(state.selectedOpportunity).toEqual(opportunity);
-    });
-
-    it('should clear opportunity when set to null', () => {
-      const opportunity = { mint: 'test-mint', symbol: '$TEST' };
-      app.showOpportunity(opportunity);
-      app.showOpportunity(null);
-
-      const state = app.getState();
-      expect(state.selectedOpportunity).toBeNull();
-    });
-  });
-
-  describe('Application Lifecycle', () => {
-    it('should handle graceful shutdown', () => {
-      // Note: start() requires actual OpenTUI initialization
-      // so we just test that stop() can be called without errors
-      expect(() => app.stop()).not.toThrow();
-    });
-
-    it('should return correct state after operations', () => {
-      app.navigateToScreen('positions');
-      app.updatePositions([
-        {
-          id: 'pos-1',
-          mint: 'mint1',
-          tokenSymbol: '$TOKEN1',
-          entryPrice: 0.001,
-          tokensHeld: 100,
-          entrySol: 0.1,
-          entryTimestamp: new Date(),
-          status: 'open' as const,
-        },
-      ]);
-
-      const state = app.getState();
-
-      expect(state.currentScreen).toBe('positions');
-      expect(state.positions).toHaveLength(1);
-      expect(state.isRunning).toBe(false);
-    });
-  });
-
-  describe('Request Render', () => {
-    it('should call requestRender without errors', () => {
-      // Should not throw even if renderer is not initialized
-      expect(() => { app.requestRender(); }).not.toThrow();
-    });
+    expect(config.onBuyOpportunity).toHaveBeenCalledWith('opp-1', 0.2);
   });
 });

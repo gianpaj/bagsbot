@@ -24,7 +24,7 @@ A TypeScript CLI bot for monitoring Solana token launches on the [Bags](https://
 | Semi-Auto Trading | Review opportunities and confirm with one keypress |
 | Position Sizing | Automatic calculation based on portfolio percentage |
 | Exit Management | Configurable take-profit (default 10x) and stop-loss (default -50%) |
-| Terminal UI | Rich TUI dashboard built with OpenTUI |
+| Agent-Centric Dashboard | TradingAgents-style TUI with progress, event log, current report, and footer metrics |
 
 ### Filter Stack
 
@@ -62,15 +62,15 @@ Launch Detected
 
 ### Node.js
 
-Node.js version 18.0.0 or higher is required.
+Node.js version 22.0.0 or higher is required.
 
 ```bash
 # Check your Node.js version
 node --version
 
 # Install via nvm (recommended)
-nvm install 18
-nvm use 18
+nvm install 22
+nvm use 22
 ```
 
 ### Zig
@@ -251,68 +251,77 @@ bun start
 bun run dev
 ```
 
-### Keybindings
+### Dashboard Controls
 
 | Key | Action |
 |-----|--------|
-| `Enter` | Confirm trade at suggested amount |
-| `Esc` | Skip/reject current opportunity |
-| `+` / `-` | Adjust position size |
-| `P` | View positions screen |
-| `H` | View trade history |
-| `S` | Open settings |
+| `↑` / `k` | Select previous tracked coin |
+| `↓` / `j` | Select next tracked coin |
+| `b` | Buy the selected pending opportunity at the suggested amount |
+| `s` | Skip/reject the selected pending opportunity |
 | `Q` | Quit the bot |
+
+### Dashboard Layout
+
+The main bot UI is now a fixed three-area dashboard:
+
+- `Progress`: tracked launches and opportunities, rendered as an agent pipeline per coin
+- `Messages & Tools`: reverse-chronological execution log of tool, reasoning, and system events
+- `Current Report / New Analysis`: synthesized analysis for the currently selected coin
+- footer: tracked items, active opportunities, open positions, tool-call count, generated reports, and uptime
+
+Selection is keyboard-driven and item-centric. The bottom report pane always follows the currently selected tracked coin.
 
 ### Workflow
 
-1. **Launch Detection**: The bot connects to Bags Restream and monitors for new token launches.
-
-2. **Filtering**: Each launch passes through the filter pipeline:
-   - Creator filter checks social verification and launch history
-   - Technical filter validates metadata completeness
-   - Social filter evaluates community presence
-   - Liquidity filter checks initial liquidity and holder distribution
-
-3. **Scoring**: A weighted score (0-100) is calculated. Launches scoring >= 60 trigger an alert.
-
-4. **Review**: The opportunity is displayed with full details:
-   - Token name, symbol, and mint address
-   - Creator information and verification status
-   - Filter breakdown with individual scores
-   - Suggested position size based on your portfolio
-
-5. **Confirm or Skip**: Press Enter to execute the trade or Esc to skip.
-
-6. **Position Tracking**: Confirmed trades are tracked with real-time P&L.
-
-7. **Exit Management**: Positions are monitored against take-profit and stop-loss thresholds.
+1. **Launch Detection**: The bot connects to Bags Restream and starts tracking new coins as soon as launch events arrive.
+2. **Agent Pipeline Rendering**: Each tracked coin is shown through a subsystem pipeline:
+   - `Launch Listener`
+   - `Creator Analyst`
+   - `Technical Analyst`
+   - `Social Analyst`
+   - `Liquidity Analyst`
+   - `Scoring Agent`
+   - `Opportunity Manager`
+   - `Trader`
+   - `Position Monitor`
+3. **Filtering and Scoring**: The real filter pipeline runs, then the scoring engine calculates a weighted 0-100 score and confidence level.
+4. **Opportunity Creation**: Coins above the alert threshold become pending opportunities with a suggested SOL amount.
+5. **Review by Selection**: You move through tracked coins with the keyboard and inspect the current report for the selected item.
+6. **Trade Decision**: Press `b` to buy the selected pending opportunity or `s` to reject it.
+7. **Position and Exit Monitoring**: Executed trades become tracked positions and continue updating the dashboard as exit signals fire.
 
 ## Architecture
 
+```text
+Restream Listener
+        |
+        v
+Filter Pipeline -> Scoring Engine
+        |
+        v
+   Alert System
+        |
+        +--------------------------+
+        |                          |
+        v                          v
+ Trade Executor              Dashboard State
+        |                          |
+        v                          v
+ Position Manager <---- Exit Monitor
+        |
+        v
+ OpenTUI Dashboard
 ```
-+-------------------------------------------------------------------+
-|                         BAGS SNIPER BOT                            |
-+-------------------------------------------------------------------+
-|                                                                    |
-|  +------------+    +------------+    +------------+               |
-|  |  Restream  |--->|  Filter    |--->|  Scoring   |               |
-|  |  Listener  |    |  Pipeline  |    |  Engine    |               |
-|  +------------+    +------------+    +------------+               |
-|                                            |                       |
-|                                            v                       |
-|  +------------+    +------------+    +------------+               |
-|  |  Position  |<---|   Trade    |<---|   Alert    |               |
-|  |  Manager   |    |  Executor  |    |   System   |               |
-|  +------------+    +------------+    +------------+               |
-|        |                                    |                      |
-|        v                                    v                      |
-|  +------------+                      +------------+               |
-|  |   Exit     |--------------------->|  OpenTUI   |               |
-|  |  Monitor   |                      |  Interface |               |
-|  +------------+                      +------------+               |
-|                                                                    |
-+-------------------------------------------------------------------+
-```
+
+### UI Data Flow
+
+The terminal UI is now store-driven rather than screen-driven:
+
+1. `BagsBot` emits structured lifecycle updates for launches, analysis, opportunities, trades, positions, and exits.
+2. `src/ui/dashboard-state.ts` turns those updates into tracked items, agent statuses, event log entries, synthesized report text, and footer metrics.
+3. `src/ui/layout.ts` renders the full dashboard from that derived state.
+4. `src/ui/app.ts` bridges keyboard input and bot events into the store.
 
 ### Module Overview
 
@@ -325,12 +334,14 @@ bun run dev
 | Social Filter | `src/filters/social.ts` | Evaluates social presence |
 | Liquidity Filter | `src/filters/liquidity.ts` | Analyzes liquidity metrics |
 | Scoring Engine | `src/scoring/engine.ts` | Calculates weighted scores |
-| Alert System | `src/alerts/system.ts` | Manages opportunity queue |
+| Alert System | `src/alerts/system.ts` | Manages opportunity queue and lifecycle notifications |
 | Trade Executor | `src/trading/executor.ts` | Executes swap transactions |
 | Wallet Manager | `src/trading/wallet.ts` | Handles wallet operations |
 | Position Manager | `src/positions/manager.ts` | Tracks open positions |
 | Exit Monitor | `src/exits/monitor.ts` | Monitors TP/SL conditions |
-| OpenTUI App | `src/ui/app.ts` | Terminal user interface |
+| OpenTUI App | `src/ui/app.ts` | Dashboard runtime and keyboard bridge |
+| Dashboard State | `src/ui/dashboard-state.ts` | Event-driven UI store for tracked items and reports |
+| Dashboard Layout | `src/ui/layout.ts` | TradingAgents-style three-pane renderer |
 
 ## Development
 
@@ -381,6 +392,9 @@ bagsbot/
 |   |-- positions/            # Position management
 |   |-- exits/                # Exit monitoring
 |   |-- ui/                   # Terminal UI
+|   |   |-- app.ts            # Dashboard runtime and key handling
+|   |   |-- dashboard-state.ts# UI event/state store
+|   |   +-- layout.ts         # Three-pane dashboard renderer
 |   |-- types/                # TypeScript types
 |   |-- errors/               # Error classes
 |   +-- utils/                # Utilities
@@ -398,7 +412,7 @@ bagsbot/
 - **Runtime**: Node.js 18+
 - **SDK**: `@bagsfm/bags-sdk` for Bags platform integration
 - **Blockchain**: `@solana/web3.js` for Solana interactions
-- **UI**: `@opentui/core` for terminal interface
+- **UI**: `@opentui/core` for the dashboard interface
 - **Validation**: `zod` for schema validation
 - **Testing**: Vitest
 - **Linting**: ESLint + TypeScript ESLint

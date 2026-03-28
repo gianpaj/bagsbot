@@ -91,7 +91,7 @@ export class HeadlessCli {
     console.log('='.repeat(60));
     console.log(`Token: ${opportunity.launch.name} (${opportunity.launch.symbol})`);
     console.log(`Mint: ${opportunity.launch.mint}`);
-    console.log(`Score: ${opportunity.filterResult.score}/100`);
+    console.log(`Score: ${opportunity.filterResult.totalScore}/100`);
     console.log(`Suggested Amount: ${opportunity.suggestedAmount.toFixed(4)} SOL`);
     console.log('-'.repeat(60));
     console.log('Commands: [B] Buy  [S] Skip  [Q] Quit');

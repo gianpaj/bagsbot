@@ -172,8 +172,30 @@ export class BagsBot {
         this.uiApp = new OpenTUIApp({
           botConfig: this.config,
           opportunityTimeoutMs: this.config.ui.opportunityTimeoutSec * 1000,
+          onBuyOpportunity: (opportunityId, amount) => {
+            this.handleOpportunityConfirmation(opportunityId, amount).catch((err) => {
+              this.logger.error('Error confirming opportunity', { error: err });
+            });
+          },
+          onSkipOpportunity: (opportunityId) => {
+            this.handleOpportunityRejection(opportunityId);
+          },
+          onQuit: () => {
+            this.shutdown().catch((err) => {
+              this.logger.error('Error during shutdown', { error: err });
+              process.exit(1);
+            });
+          },
         });
         await this.uiApp.start();
+        try {
+          const lamports = await this.walletManager.getBalance(this.connection);
+          this.uiApp.setWalletBalance(lamports / 1_000_000_000);
+        } catch (error) {
+          this.logger.warn('Failed to load wallet balance for UI', {
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
         this.logger.info('UI started successfully');
       } else {
         // Start headless CLI for keyboard interaction
@@ -229,13 +251,20 @@ export class BagsBot {
           error: message,
           mint: event.mint,
         });
+        this.uiApp?.failAgentWork(event.mint, 'Launch Listener', message);
       });
     });
     this.unsubscribeHandlers.push(unsubLaunch);
 
-    // Subscribe to UI confirmations
-    // Note: The UI will call methods on this class to confirm trades
-    // This is handled through the handleOpportunityConfirmation method
+    const unsubStatus = this.restreamListener.onConnectionStatusChange((status) => {
+      this.uiApp?.setConnectionStatus(status);
+    });
+    this.unsubscribeHandlers.push(unsubStatus);
+
+    const unsubOpportunityStatus = this.alertSystem.onOpportunityStatusChange((opportunity) => {
+      this.uiApp?.syncOpportunityStatus(opportunity);
+    });
+    this.unsubscribeHandlers.push(unsubOpportunityStatus);
 
     // Subscribe to exit signals
     const unsubExit = this.exitMonitor.onExitSignal((signal) => {
@@ -281,12 +310,22 @@ export class BagsBot {
   private async handleLaunchEvent(event: LaunchpadLaunchEvent): Promise<void> {
     this.logger.debug('Processing launch event', { mint: event.mint, name: event.name });
 
+    // Publish a staged, agent-centric view of the launch before and after the
+    // real filter pipeline runs so the dashboard can stream intermediate work.
+    this.uiApp?.trackLaunch(event);
+    this.uiApp?.startAgentWork(event.mint, 'Creator Analyst', 'evaluating creator signal');
+    this.uiApp?.startAgentWork(event.mint, 'Technical Analyst', 'evaluating technical signal');
+    this.uiApp?.startAgentWork(event.mint, 'Social Analyst', 'evaluating social signal');
+    this.uiApp?.startAgentWork(event.mint, 'Liquidity Analyst', 'evaluating liquidity signal');
+
     // Evaluate through filter pipeline
     const filterResult = await this.filterPipeline.evaluate(event);
 
     // Calculate confidence score
+    this.uiApp?.startAgentWork(event.mint, 'Scoring Agent', 'scoring opportunity');
     const score = this.scoringEngine.calculate(filterResult.filters);
     const confidence = this.scoringEngine.getConfidenceLevel(score);
+    this.uiApp?.applyFilterResult(event.mint, filterResult, confidence);
 
     this.logger.debug('Launch evaluation complete', {
       mint: event.mint,
@@ -298,6 +337,9 @@ export class BagsBot {
     // If it doesn't pass the threshold, skip it
     if (!filterResult.passed) {
       this.logger.debug('Launch did not pass filter threshold', { mint: event.mint });
+      this.uiApp?.skipAgentWork(event.mint, 'Opportunity Manager', 'launch did not meet alert threshold');
+      this.uiApp?.skipAgentWork(event.mint, 'Trader', 'trade not created');
+      this.uiApp?.skipAgentWork(event.mint, 'Position Monitor', 'no position to monitor');
       return;
     }
 
@@ -312,6 +354,7 @@ export class BagsBot {
     };
 
     // Add to alert queue (queue method will set timestamp and status)
+    this.uiApp?.startAgentWork(event.mint, 'Opportunity Manager', 'queueing opportunity');
     this.alertSystem.queue(opportunity);
     this.logger.info('Opportunity queued', {
       opportunityId: opportunity.id,
@@ -353,14 +396,18 @@ export class BagsBot {
       });
 
       // Confirm in alert system
-      const opportunity = this.alertSystem.getCurrentOpportunity();
-      if (opportunity?.id !== opportunityId) {
-        this.logger.warn('Opportunity not found or not current', { opportunityId });
+      const opportunity = this.alertSystem.getOpportunityById(opportunityId);
+      if (opportunity === null) {
+        this.logger.warn('Opportunity not found', { opportunityId });
+        this.uiApp?.addSystemMessage(`Opportunity ${opportunityId} was not found.`);
         return;
       }
 
       this.alertSystem.confirm(opportunityId, amount);
+      this.uiApp?.startTradeExecution(opportunity.launch.mint, amount);
 
+      // Position limits are enforced after confirmation so the dashboard can
+      // show the exact reason a selected opportunity cannot progress to trade.
       // Check position limits
       const openPositions = this.positionManager.getOpenPositions();
       if (openPositions.length >= this.config.maxOpenPositions) {
@@ -368,6 +415,10 @@ export class BagsBot {
           current: openPositions.length,
           max: this.config.maxOpenPositions,
         });
+        this.uiApp?.failTradeExecution(
+          opportunity.launch.mint,
+          `Max open positions reached (${this.config.maxOpenPositions})`
+        );
         return;
       }
 
@@ -383,6 +434,10 @@ export class BagsBot {
           opportunityId,
           error: tradeResult.error,
         });
+        this.uiApp?.failTradeExecution(
+          opportunity.launch.mint,
+          tradeResult.error ?? 'Trade execution failed'
+        );
         return;
       }
 
@@ -391,6 +446,7 @@ export class BagsBot {
         mint: opportunity.launch.mint,
         signature: tradeResult.signature,
       });
+      this.uiApp?.completeTradeExecution(opportunity.launch.mint, tradeResult);
 
       // Add position to manager
       // Note: We need the actual tokens received and entry SOL amount from trade result
@@ -415,6 +471,10 @@ export class BagsBot {
         error: message,
         opportunityId,
       });
+      const opportunity = this.alertSystem.getOpportunityById(opportunityId);
+      if (opportunity !== null) {
+        this.uiApp?.failTradeExecution(opportunity.launch.mint, message);
+      }
       // Note: UI error display would be handled by the UI component itself
     }
   }
@@ -434,6 +494,12 @@ export class BagsBot {
         error: message,
         opportunityId,
       });
+      const opportunity = this.alertSystem.getOpportunityById(opportunityId);
+      if (opportunity !== null) {
+        this.uiApp?.failAgentWork(opportunity.launch.mint, 'Opportunity Manager', message);
+      } else {
+        this.uiApp?.addSystemMessage(`Failed to reject opportunity ${opportunityId}: ${message}`);
+      }
     }
   }
 
@@ -451,8 +517,8 @@ export class BagsBot {
     });
 
     try {
-      // Note: In a real implementation, this would execute the exit trade
-      // For now, we just log it and update the UI
+      // Exit execution is still manual, but the dashboard treats the trigger as
+      // a first-class lifecycle event for the selected item report.
       this.logger.info('Exit signal details', {
         mint: signal.position.mint,
         tokenSymbol: signal.position.tokenSymbol,
@@ -463,6 +529,7 @@ export class BagsBot {
 
       // Update UI (if not headless)
       if (this.uiApp !== null) {
+        this.uiApp.recordExitSignal(signal);
         this.uiApp.updatePositions(this.positionManager.getOpenPositions());
       }
     } catch (error) {
@@ -470,6 +537,7 @@ export class BagsBot {
       this.logger.error('Error processing exit signal', {
         error: message,
       });
+      this.uiApp?.failAgentWork(signal.position.mint, 'Position Monitor', message);
     }
   }
 
@@ -537,6 +605,7 @@ export class BagsBot {
 
       // Stop UI or headless CLI
       if (this.uiApp !== null) {
+        this.uiApp.setConnectionStatus('disconnected');
         this.uiApp.stop();
         this.logger.debug('UI stopped');
       }

@@ -47,6 +47,11 @@ export interface AlertSystemConfig {
 }
 
 /**
+ * Handler invoked whenever an opportunity changes state.
+ */
+export type OpportunityStatusHandler = (opportunity: Opportunity) => void;
+
+/**
  * Alert system for managing token trading opportunities
  *
  * Implements a queue-based system for presenting opportunities to users,
@@ -64,6 +69,9 @@ export class AlertSystem {
 
   /** Configuration for the alert system */
   private config: Required<AlertSystemConfig>;
+
+  /** Subscribers for opportunity status changes */
+  private statusHandlers = new Set<OpportunityStatusHandler>();
 
   /**
    * Create a new AlertSystem instance
@@ -95,6 +103,8 @@ export class AlertSystem {
 
     // Set up automatic expiration
     this.setExpirationTimer(opportunity.id);
+
+    this.emitStatus(opportunity);
   }
 
   /**
@@ -136,6 +146,7 @@ export class AlertSystem {
     // Move from queue to history
     this.removeFromQueue(id);
     this.addToHistory(opportunity);
+    this.emitStatus(opportunity);
   }
 
   /**
@@ -164,6 +175,7 @@ export class AlertSystem {
     // Move from queue to history
     this.removeFromQueue(id);
     this.addToHistory(opportunity);
+    this.emitStatus(opportunity);
   }
 
   /**
@@ -173,6 +185,35 @@ export class AlertSystem {
   getHistory(): Opportunity[] {
     // Return a copy to prevent external modifications
     return [...this.history];
+  }
+
+  /**
+   * Find an opportunity by ID across the queue and history.
+   *
+   * @param id The opportunity ID
+   * @returns The matching opportunity or null
+   */
+  getOpportunityById(id: string): Opportunity | null {
+    const queued = this.opportunityQueue.find((opp) => opp.id === id);
+    if (queued !== undefined) {
+      return queued;
+    }
+
+    return this.history.find((opp) => opp.id === id) ?? null;
+  }
+
+  /**
+   * Subscribe to opportunity status changes.
+   *
+   * @param handler Callback for queue, confirm, reject, and expire events
+   * @returns Unsubscribe function
+   */
+  onOpportunityStatusChange(handler: OpportunityStatusHandler): () => void {
+    this.statusHandlers.add(handler);
+
+    return () => {
+      this.statusHandlers.delete(handler);
+    };
   }
 
   /**
@@ -193,6 +234,20 @@ export class AlertSystem {
     // Move from queue to history
     this.removeFromQueue(id);
     this.addToHistory(opportunity);
+    this.emitStatus(opportunity);
+  }
+
+  /**
+   * Notify subscribers that an opportunity changed state.
+   */
+  private emitStatus(opportunity: Opportunity): void {
+    this.statusHandlers.forEach((handler) => {
+      try {
+        handler(opportunity);
+      } catch {
+        // Ignore subscriber failures so queueing/execution continues.
+      }
+    });
   }
 
   /**
@@ -265,6 +320,7 @@ export class AlertSystem {
     // Clear queues
     this.opportunityQueue = [];
     this.history = [];
+    this.statusHandlers.clear();
   }
 
   /**

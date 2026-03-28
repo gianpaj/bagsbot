@@ -10,6 +10,22 @@ export { OpenTUIApp, type AppConfig, type AppState, type ScreenState } from './a
 export { HeadlessCli, createHeadlessCli, type HeadlessCliCallbacks } from './headless-cli.js';
 export { createMainLayout } from './layout.js';
 export {
+  type DashboardAgentName,
+  type DashboardAgentStatus,
+  type DashboardEvent,
+  type DashboardEventType,
+  type DashboardOpportunityState,
+  type DashboardTrackedItem,
+  type DashboardState,
+  type DashboardMetrics,
+  DASHBOARD_AGENT_ORDER,
+  cloneDashboardState,
+  createDashboardState,
+  getDashboardMetrics,
+  getSelectedTrackedItem,
+  buildCurrentReport,
+} from './dashboard-state.js';
+export {
   createHeader,
   createOpportunityCard,
   createFilterResults,
