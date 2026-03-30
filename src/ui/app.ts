@@ -41,16 +41,30 @@ import {
 
 export type CliRenderer = any;
 export type RenderContext = any;
+export type KeyInputEvent = any;
 
 const createCliRenderer: any = (OpenTUI as any).createCliRenderer;
 const ConsolePosition: any = (OpenTUI as any).ConsolePosition;
-const RootRenderable: any = (OpenTUI as any).RootRenderable;
+const BoxRenderable: any = (OpenTUI as any).BoxRenderable;
+const TextRenderable: any = (OpenTUI as any).TextRenderable;
+
+const HELP_SHORTCUTS = [
+  ['j / down', 'Select next token'],
+  ['k / up', 'Select previous token'],
+  ['b', 'Buy selected opportunity'],
+  ['s', 'Skip selected opportunity'],
+  ['q', 'Quit dashboard'],
+  ['`', 'Toggle raw logs drawer'],
+  ['?', 'Open or close this help'],
+  ['esc', 'Close help modal'],
+] as const;
 
 // Preserve the old type export so existing component modules still compile.
 export type ScreenState = 'main' | 'positions' | 'history' | 'settings';
 
 export interface AppState {
   dashboard: DashboardState;
+  isHelpModalVisible: boolean;
   isRunning: boolean;
 }
 
@@ -65,6 +79,7 @@ export interface AppConfig {
 export class OpenTUIApp {
   private renderer: CliRenderer | null = null;
   private rootRenderable: any | null = null;
+  private helpModal: any | null = null;
   private config: AppConfig;
   private state: AppState;
   private logger = logger.child({ module: 'app' });
@@ -73,6 +88,7 @@ export class OpenTUIApp {
     this.config = config;
     this.state = {
       dashboard: createDashboardState(),
+      isHelpModalVisible: false,
       isRunning: false,
     };
   }
@@ -80,6 +96,7 @@ export class OpenTUIApp {
   async start(): Promise<void> {
     try {
       this.logger.info('Starting OpenTUI dashboard');
+      const isCaptureMode = process.env['UI_CAPTURE_MODE'] === 'true';
 
       // The renderer owns the alternate-screen session and the root render tree.
       this.renderer = await createCliRenderer({
@@ -87,9 +104,11 @@ export class OpenTUIApp {
         exitSignals: ['SIGINT', 'SIGTERM'],
         debounceDelay: 50,
         targetFps: 30,
-        useAlternateScreen: true,
+        // Capture mode keeps the dashboard on the main screen so tools like VHS
+        // can snapshot the rendered panes instead of an alternate-screen buffer.
+        useAlternateScreen: !isCaptureMode,
         useMouse: false,
-        useConsole: true,
+        useConsole: !isCaptureMode,
         consoleOptions: {
           position: ConsolePosition?.BOTTOM ?? 'bottom',
           sizePercent: 28,
@@ -110,15 +129,21 @@ export class OpenTUIApp {
         },
       });
 
+      this.renderer.start();
       this.initializeConsoleDrawer();
       this.setupKeyboardInput();
-      this.rootRenderable = new RootRenderable(this.renderer);
+      this.rootRenderable = this.renderer.root;
       this.rootRenderable.add(createMainLayout(this.state, this.config.botConfig));
-      this.renderer.add(this.rootRenderable);
+      this.helpModal = this.createHelpModal();
+      this.rootRenderable.add(this.helpModal);
 
       this.state.isRunning = true;
       this.logger.info('OpenTUI dashboard started');
     } catch (error) {
+      this.renderer?.destroy();
+      this.renderer = null;
+      this.rootRenderable = null;
+      this.helpModal = null;
       this.logger.error('Failed to start OpenTUI application', {
         error:
           error instanceof Error
@@ -136,10 +161,10 @@ export class OpenTUIApp {
 
     // Selection is item-centric: keyboard input moves through tracked coins,
     // then buy/skip actions operate on the selected pending opportunity.
-    this.renderer.on('key', (data: Buffer) => {
-      const keyStr = data.toString('utf-8').toLowerCase();
+    this.renderer.keyInput.on('keypress', (key: KeyInputEvent) => {
+      const keyStr = String(key.name ?? key.sequence ?? key.raw ?? '').toLowerCase();
 
-      if (keyStr === '`' || keyStr === '"') {
+      if (!this.state.isHelpModalVisible && (keyStr === '`' || keyStr === '"')) {
         this.toggleConsoleDrawer();
         return;
       }
@@ -147,6 +172,18 @@ export class OpenTUIApp {
       // When the raw log drawer is visible, it owns navigation and copy/resize
       // shortcuts. The dashboard should not react to overlapping keys.
       if (this.renderer?.console?.visible === true) {
+        return;
+      }
+
+      if (keyStr === '?') {
+        this.toggleHelpModal();
+        return;
+      }
+
+      if (this.state.isHelpModalVisible) {
+        if (keyStr === '\u001b' || keyStr === 'q') {
+          this.closeHelpModal();
+        }
         return;
       }
 
@@ -196,6 +233,83 @@ export class OpenTUIApp {
     this.renderer.requestRender();
   }
 
+  private toggleHelpModal(): void {
+    this.state.isHelpModalVisible = !this.state.isHelpModalVisible;
+    this.syncHelpModalVisibility();
+  }
+
+  private closeHelpModal(): void {
+    if (!this.state.isHelpModalVisible) {
+      return;
+    }
+
+    this.state.isHelpModalVisible = false;
+    this.syncHelpModalVisibility();
+  }
+
+  private createHelpModal(): any {
+    if (this.renderer === null) {
+      return null;
+    }
+
+    const modal = new BoxRenderable(this.renderer, {
+      id: 'help-modal',
+      position: 'absolute',
+      left: '50%',
+      top: '50%',
+      width: 60,
+      height: 16,
+      marginLeft: -30,
+      marginTop: -8,
+      border: true,
+      borderStyle: 'double',
+      borderColor: '#4ECDC4',
+      backgroundColor: '#0D1117',
+      title: 'Keybindings',
+      titleAlignment: 'center',
+      paddingLeft: 2,
+      paddingRight: 2,
+      paddingTop: 1,
+      paddingBottom: 1,
+      zIndex: 100,
+      visible: false,
+      flexDirection: 'column',
+    });
+
+    modal.add(
+      new TextRenderable(this.renderer, {
+        id: 'help-title',
+        content: 'Press ? or Esc to close',
+      })
+    );
+
+    modal.add(
+      new TextRenderable(this.renderer, {
+        id: 'help-spacer',
+        content: '',
+      })
+    );
+
+    for (const [shortcut, description] of HELP_SHORTCUTS) {
+      modal.add(
+        new TextRenderable(this.renderer, {
+          id: `help-${shortcut.replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '').toLowerCase()}`,
+          content: `${shortcut.padEnd(12)} ${description}`,
+        })
+      );
+    }
+
+    return modal;
+  }
+
+  private syncHelpModalVisibility(): void {
+    if (this.helpModal !== null) {
+      this.helpModal.visible = this.state.isHelpModalVisible;
+    }
+
+    this.renderer?.requestRender();
+  }
+
   private handleBuyOpportunity(): void {
     const opportunity = getSelectedPendingOpportunity(this.state.dashboard);
     if (opportunity === null) {
@@ -242,14 +356,9 @@ export class OpenTUIApp {
       return;
     }
 
-    // The layout is derived from the dashboard store, so re-rendering means
-    // replacing the root child with a fresh layout snapshot.
-    const children = this.rootRenderable.getChildren();
-    children.forEach((child: unknown) => {
-      const childRenderable = child as { id: string };
-      this.rootRenderable?.remove(childRenderable.id);
-    });
-
+    // The main dashboard layout is derived from the dashboard store. Keep
+    // overlays mounted separately so modal visibility can be toggled directly.
+    this.rootRenderable.remove('main-layout');
     this.rootRenderable.add(createMainLayout(this.state, this.config.botConfig));
     this.renderer.requestRender();
   }
@@ -355,6 +464,7 @@ export class OpenTUIApp {
       this.renderer = null;
     }
 
+    this.helpModal = null;
     this.rootRenderable = null;
   }
 

@@ -278,7 +278,8 @@ function createFooter(state: AppState, _botConfig: BotConfig): unknown {
   const footerText =
     `Tracked: ${metrics.trackedItems} | Opportunities: ${metrics.activeOpportunities} | ` +
     `Positions: ${metrics.openPositions} | Tool Calls: ${metrics.toolCalls} | ` +
-    `Generated Reports: ${metrics.generatedReports} | Uptime: ${formatElapsed(state.dashboard.startedAt)}`;
+    `Generated Reports: ${metrics.generatedReports} | Uptime: ${formatElapsed(state.dashboard.startedAt)} | ` +
+    `? Help`;
 
   return Box(
     {

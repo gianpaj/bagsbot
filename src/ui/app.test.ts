@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { OpenTUIApp, type AppConfig } from './app.js';
 
-let keyHandler: ((data: Buffer) => void) | undefined;
+let keyHandler: ((event: { name?: string; sequence?: string; raw?: string }) => void) | undefined;
 let mockConsole: {
   visible: boolean;
   toggle: ReturnType<typeof vi.fn>;
@@ -9,13 +9,20 @@ let mockConsole: {
   keyBindings?: unknown;
 };
 let mockRenderer: {
-  add: ReturnType<typeof vi.fn>;
-  remove: ReturnType<typeof vi.fn>;
+  start: ReturnType<typeof vi.fn>;
   destroy: ReturnType<typeof vi.fn>;
   requestRender: ReturnType<typeof vi.fn>;
-  on: ReturnType<typeof vi.fn>;
   copyToClipboardOSC52: ReturnType<typeof vi.fn>;
+  keyInput: {
+    on: ReturnType<typeof vi.fn>;
+    off: ReturnType<typeof vi.fn>;
+  };
   console: typeof mockConsole;
+  root: {
+    add: ReturnType<typeof vi.fn>;
+    remove: ReturnType<typeof vi.fn>;
+    getChildren: ReturnType<typeof vi.fn>;
+  };
 };
 
 vi.mock('@opentui/core', () => ({
@@ -23,13 +30,18 @@ vi.mock('@opentui/core', () => ({
     BOTTOM: 'bottom',
   },
   createCliRenderer: vi.fn(async () => mockRenderer),
-  RootRenderable: vi.fn(
-    class {
-      add = vi.fn();
-      remove = vi.fn();
-      getChildren = vi.fn().mockReturnValue([]);
-    }
-  ),
+  BoxRenderable: vi.fn(function (_ctx, options) {
+    return {
+      ...options,
+      visible: options.visible ?? true,
+      add: vi.fn(),
+    };
+  }),
+  TextRenderable: vi.fn(function (_ctx, options) {
+    return {
+      ...options,
+    };
+  }),
 }));
 
 vi.mock('./layout.js', () => ({
@@ -82,17 +94,24 @@ describe('OpenTUIApp', () => {
       }),
     };
     mockRenderer = {
-      add: vi.fn(),
-      remove: vi.fn(),
+      start: vi.fn(),
       destroy: vi.fn(),
       requestRender: vi.fn(),
       copyToClipboardOSC52: vi.fn(() => true),
+      keyInput: {
+        on: vi.fn((event: string, handler: (key: { name?: string; sequence?: string; raw?: string }) => void) => {
+          if (event === 'keypress') {
+            keyHandler = handler;
+          }
+        }),
+        off: vi.fn(),
+      },
       console: mockConsole,
-      on: vi.fn((event: string, handler: (data: Buffer) => void) => {
-        if (event === 'key') {
-          keyHandler = handler;
-        }
-      }),
+      root: {
+        add: vi.fn(),
+        remove: vi.fn(),
+        getChildren: vi.fn().mockReturnValue([]),
+      },
     };
     config = {
       botConfig: mockBotConfig,
@@ -106,6 +125,7 @@ describe('OpenTUIApp', () => {
   it('initializes with dashboard state', () => {
     const state = app.getState();
     expect(state.isRunning).toBe(false);
+    expect(state.isHelpModalVisible).toBe(false);
     expect(state.dashboard.trackedItems).toHaveLength(0);
     expect(state.dashboard.selectedItemId).toBeNull();
   });
@@ -145,11 +165,11 @@ describe('OpenTUIApp', () => {
       symbol: 'TWO',
     });
 
-    keyHandler?.(Buffer.from('j'));
+    keyHandler?.({ name: 'j', sequence: 'j', raw: 'j' });
     let state = app.getState();
     expect(state.dashboard.selectedItemId).toBe('mint-1');
 
-    keyHandler?.(Buffer.from('k'));
+    keyHandler?.({ name: 'k', sequence: 'k', raw: 'k' });
     state = app.getState();
     expect(state.dashboard.selectedItemId).toBe('mint-2');
   });
@@ -192,7 +212,7 @@ describe('OpenTUIApp', () => {
       status: 'pending',
     });
 
-    keyHandler?.(Buffer.from('b'));
+    keyHandler?.({ name: 'b', sequence: 'b', raw: 'b' });
 
     expect(config.onBuyOpportunity).toHaveBeenCalledWith('opp-1', 0.2);
   });
@@ -200,11 +220,44 @@ describe('OpenTUIApp', () => {
   it('toggles the raw log drawer with backtick', async () => {
     await app.start();
 
-    keyHandler?.(Buffer.from('`'));
+    keyHandler?.({ name: '`', sequence: '`', raw: '`' });
 
     expect(mockConsole.toggle).toHaveBeenCalledTimes(1);
     expect(mockRenderer.requestRender).toHaveBeenCalled();
     expect(mockConsole.visible).toBe(true);
+  });
+
+  it('toggles the help modal with question mark', async () => {
+    await app.start();
+
+    keyHandler?.({ name: '?', sequence: '?', raw: '?' });
+    expect(app.getState().isHelpModalVisible).toBe(true);
+
+    keyHandler?.({ name: '?', sequence: '?', raw: '?' });
+    expect(app.getState().isHelpModalVisible).toBe(false);
+  });
+
+  it('closes the help modal with escape without quitting the app', async () => {
+    await app.start();
+
+    keyHandler?.({ name: '?', sequence: '?', raw: '?' });
+    keyHandler?.({ name: '\u001b', sequence: '\u001b', raw: '\u001b' });
+
+    expect(app.getState().isHelpModalVisible).toBe(false);
+    expect(config.onQuit).not.toHaveBeenCalled();
+  });
+
+  it('closes the help modal with q before allowing quit', async () => {
+    await app.start();
+
+    keyHandler?.({ name: '?', sequence: '?', raw: '?' });
+    keyHandler?.({ name: 'q', sequence: 'q', raw: 'q' });
+
+    expect(app.getState().isHelpModalVisible).toBe(false);
+    expect(config.onQuit).not.toHaveBeenCalled();
+
+    keyHandler?.({ name: 'q', sequence: 'q', raw: 'q' });
+    expect(config.onQuit).toHaveBeenCalledTimes(1);
   });
 
   it('does not trigger dashboard shortcuts while the console drawer is visible', async () => {
@@ -246,10 +299,57 @@ describe('OpenTUIApp', () => {
     });
 
     mockConsole.visible = true;
-    keyHandler?.(Buffer.from('b'));
-    keyHandler?.(Buffer.from('j'));
+    keyHandler?.({ name: 'b', sequence: 'b', raw: 'b' });
+    keyHandler?.({ name: 'j', sequence: 'j', raw: 'j' });
 
     expect(config.onBuyOpportunity).not.toHaveBeenCalled();
     expect(app.getState().dashboard.selectedItemId).toBe('mint-1');
+  });
+
+  it('does not trigger dashboard shortcuts while the help modal is visible', async () => {
+    await app.start();
+    app.trackLaunch({
+      mint: 'mint-1',
+      creator: 'creator-1',
+      name: 'Token One',
+      symbol: 'ONE',
+    });
+    app.showOpportunity({
+      id: 'opp-1',
+      launch: {
+        mint: 'mint-1',
+        creator: 'creator-1',
+        name: 'Token One',
+        symbol: 'ONE',
+      },
+      filterResult: {
+        launch: {
+          mint: 'mint-1',
+          creator: 'creator-1',
+          name: 'Token One',
+          symbol: 'ONE',
+        },
+        totalScore: 82,
+        passed: true,
+        filters: {
+          creator: { passed: true, score: 80, details: 'good' },
+          technical: { passed: true, score: 81, details: 'good' },
+          social: { passed: true, score: 82, details: 'good' },
+          liquidity: { passed: true, score: 83, details: 'good' },
+        },
+        timestamp: new Date(),
+      },
+      suggestedAmount: 0.2,
+      timestamp: new Date(),
+      status: 'pending',
+    });
+
+    keyHandler?.({ name: '?', sequence: '?', raw: '?' });
+    keyHandler?.({ name: 'b', sequence: 'b', raw: 'b' });
+    keyHandler?.({ name: 'j', sequence: 'j', raw: 'j' });
+
+    expect(config.onBuyOpportunity).not.toHaveBeenCalled();
+    expect(app.getState().dashboard.selectedItemId).toBe('mint-1');
+    expect(config.onQuit).not.toHaveBeenCalled();
   });
 });

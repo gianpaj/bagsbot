@@ -43,6 +43,7 @@ const mockBotConfig = {
 
 function createState(): AppState {
   return {
+    isHelpModalVisible: false,
     isRunning: true,
     dashboard: {
       startedAt: new Date('2026-03-28T10:00:00Z'),
