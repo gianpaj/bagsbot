@@ -1,0 +1,49 @@
+{
+  "name": "history-smoke",
+  "description": "Deterministic paper-trading replay for smoke tests.",
+  "launchIntervalMs": 1500,
+  "marketTickMs": 1000,
+  "loopLaunches": false,
+  "launches": [
+    {
+      "id": "hist-alpha",
+      "label": "History Alpha",
+      "kind": "history",
+      "launch": {
+        "mint": "2tJqa1LBbeW19rwK4vT4VmQZcYhtpSoi2K6KQfDSxwTa",
+        "creator": "G4yEvhUFAcaGwr2c1PhmDMi1FKpeE6i4m45A1xGkJ7mR",
+        "name": "History Alpha",
+        "symbol": "HALPHA",
+        "description": "First deterministic launch"
+      },
+      "creator": {
+        "twitterUsername": "history_alpha",
+        "twitterVerified": true,
+        "followerCount": 1200,
+        "accountAgeDays": 180,
+        "previousLaunches": []
+      },
+      "social": {
+        "twitterMentioned": true,
+        "telegramActive": true,
+        "creatorEngagement": 72,
+        "communitySize": 900
+      },
+      "liquidity": {
+        "initialLiquiditySol": 1.4,
+        "bondingCurvePercent": 22,
+        "topHolderPercent": 14,
+        "meteoraPoolExists": true
+      },
+      "market": {
+        "kind": "history",
+        "initialPrice": 0.000002,
+        "timeline": [
+          { "offsetMs": 1000, "price": 0.0000022 },
+          { "offsetMs": 3000, "price": 0.0000035 },
+          { "offsetMs": 5000, "price": 0.0000014 }
+        ]
+      }
+    }
+  ]
+}

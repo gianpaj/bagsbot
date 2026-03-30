@@ -7,7 +7,9 @@
  */
 
 import type { IRestreamClient } from '../listeners/restream.js';
+import type { SimulationEngine } from '../simulation/index.js';
 import { createScenarioLaunchSourceRuntime } from '../testing/scenario-runtime.js';
+import type { IBagsTradeService } from '../trading/executor.js';
 import type { BotConfig } from '../types/config.js';
 import { logger } from '../utils/logger.js';
 import { createRestreamClient } from './restream-client.js';
@@ -18,6 +20,8 @@ const launchSourceLogger = logger.child({ module: 'launch-source' });
 export interface LaunchSourceRuntime {
   restreamClient: IRestreamClient;
   filterServiceOverrides?: FilterServiceOverrides;
+  tradeService?: IBagsTradeService;
+  simulationEngine?: SimulationEngine;
   description: string;
 }
 
@@ -32,6 +36,8 @@ export function createLaunchSourceRuntime(config: BotConfig): LaunchSourceRuntim
     return {
       restreamClient: runtime.restreamClient,
       filterServiceOverrides: runtime.filterServiceOverrides,
+      tradeService: runtime.tradeService,
+      simulationEngine: runtime.simulationEngine,
       description: `scenario:${runtime.scenario.name}`,
     };
   }

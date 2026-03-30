@@ -33,6 +33,7 @@ import type { LaunchpadLaunchEvent } from './types/launch.js';
 import type { ExitSignal } from './types/positions.js';
 import { logger } from './utils/logger.js';
 import { randomUUID } from 'crypto';
+import type { SimulationEngine } from './simulation/index.js';
 
 // Type for dynamically imported OpenTUIApp
 type OpenTUIAppType = import('./ui/app.js').OpenTUIApp;
@@ -45,6 +46,7 @@ export interface BagsBotConfig {
   restreamClient: IRestreamClient;
   bagsTradeService: IBagsTradeService;
   filterRegistry: FilterRegistry;
+  simulationEngine?: SimulationEngine;
 }
 
 /**
@@ -86,6 +88,7 @@ export class BagsBot {
   private walletManager: WalletManager;
   private positionManager: PositionManager;
   private exitMonitor: ExitMonitor;
+  private simulationEngine: SimulationEngine | undefined;
   private connection: Connection;
   private isRunning = false;
   private headless: boolean;
@@ -114,6 +117,7 @@ export class BagsBot {
     this.walletManager = new WalletManager();
     this.positionManager = new PositionManager();
     this.exitMonitor = new ExitMonitor(this.config.exits);
+    this.simulationEngine = botConfig.simulationEngine;
     this.tradeExecutor = new TradeExecutor(
       botConfig.bagsTradeService,
       this.walletManager,
@@ -228,6 +232,19 @@ export class BagsBot {
       // Connect to Restream listener
       await this.restreamListener.connect();
       this.logger.info('Restream listener connected');
+
+      if (this.simulationEngine !== undefined) {
+        this.simulationEngine.start({
+          positionManager: this.positionManager,
+          exitMonitor: this.exitMonitor,
+          onPositionsUpdated: (positions) => {
+            if (this.uiApp !== null) {
+              this.uiApp.updatePositions(positions);
+            }
+          },
+        });
+        this.logger.info('Simulation engine started');
+      }
 
       // Wire up event handlers
       this.setupEventHandlers();
@@ -625,6 +642,11 @@ export class BagsBot {
       // Stop exit monitor
       this.exitMonitor.stop();
       this.logger.debug('Exit monitor stopped');
+
+      if (this.simulationEngine !== undefined) {
+        this.simulationEngine.stop();
+        this.logger.debug('Simulation engine stopped');
+      }
 
       // Disconnect from Restream
       await this.restreamListener.disconnect();

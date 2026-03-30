@@ -9,7 +9,13 @@
 
 import { PublicKey, VersionedTransaction, Connection, Transaction } from '@solana/web3.js';
 import { WalletManager } from './wallet.js';
-import { TradeQuote, PreparedSwap, TradeResult, TradeConfig } from '../types/trading.js';
+import {
+  TradeQuote,
+  PreparedSwap,
+  TradeResult,
+  TradeConfig,
+  SimulatedExecution,
+} from '../types/trading.js';
 import { retry } from '../utils/retry.js';
 import { logger } from '../utils/logger.js';
 import { TradeError } from '../errors/index.js';
@@ -69,6 +75,20 @@ export interface IBagsTradeService {
     transaction: VersionedTransaction,
     connection: Connection
   ): Promise<string>;
+}
+
+/**
+ * Optional extension for paper-trading runtimes.
+ */
+export interface IPaperTradeService extends IBagsTradeService {
+  prepareSimulatedExecution?(
+    inputMint: PublicKey | string,
+    outputMint: PublicKey | string,
+    amount: number,
+    slippageBps: number,
+    priorityFeeLamports: number,
+    quote: TradeQuote
+  ): Promise<SimulatedExecution | null>;
 }
 
 /**
@@ -286,12 +306,30 @@ export class TradeExecutor {
 
       // Calculate expiration (5 minutes from now)
       const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
+      const paperTradeService = this.tradeService as IPaperTradeService;
+      let simulatedExecution: SimulatedExecution | undefined;
+      if (typeof paperTradeService.prepareSimulatedExecution === 'function') {
+        const simulation = await paperTradeService.prepareSimulatedExecution(
+          'So11111111111111111111111111111111111111112',
+          mintStr,
+          amountLamports,
+          this.config.slippageBps,
+          this.config.priorityFeeLamports,
+          quote
+        );
+        if (simulation !== null) {
+          simulatedExecution = simulation;
+        }
+      }
 
       const prepared: PreparedSwap = {
-        transaction,
+        transaction: simulatedExecution !== undefined ? {} : transaction,
         quote,
         expiresAt,
       };
+      if (simulatedExecution !== undefined) {
+        prepared.simulatedExecution = simulatedExecution;
+      }
 
       logger.debug('Swap prepared successfully', {
         mint: mintStr,
@@ -354,11 +392,26 @@ export class TradeExecutor {
       expectedOutput: prepared.quote.expectedOutput,
     });
 
+    if (prepared.simulatedExecution !== undefined) {
+      logger.info('Executing simulated swap', {
+        mint: mintStr,
+        signature: prepared.simulatedExecution.signature,
+      });
+      return {
+        success: true,
+        signature: prepared.simulatedExecution.signature,
+        tokensReceived: prepared.simulatedExecution.tokensReceived,
+        executedPrice: prepared.simulatedExecution.executedPrice,
+      };
+    }
+
     try {
       // Sign the transaction
       let signedTx: VersionedTransaction | Transaction;
       try {
-        signedTx = this.walletManager.sign(prepared.transaction as VersionedTransaction | Transaction);
+        signedTx = this.walletManager.sign(
+          prepared.transaction as VersionedTransaction | Transaction
+        );
         logger.debug('Transaction signed successfully', { mint: mintStr });
       } catch (error) {
         const errorMsg = error instanceof Error ? error.message : String(error);
@@ -370,7 +423,10 @@ export class TradeExecutor {
       try {
         signature = await retry(
           async () => {
-            return await this.tradeService.sendAndConfirmTransaction(signedTx as VersionedTransaction, this.connection);
+            return await this.tradeService.sendAndConfirmTransaction(
+              signedTx as VersionedTransaction,
+              this.connection
+            );
           },
           {
             maxRetries: this.config.maxRetries,

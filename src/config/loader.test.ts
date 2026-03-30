@@ -53,6 +53,7 @@ describe('loader', () => {
     Reflect.deleteProperty(cleanEnv, ENV_VARS.BAGS_API_KEY);
     Reflect.deleteProperty(cleanEnv, ENV_VARS.SOLANA_RPC_URL);
     Reflect.deleteProperty(cleanEnv, ENV_VARS.WALLET_PATH);
+    Reflect.deleteProperty(cleanEnv, ENV_VARS.UI_HEADLESS);
     Reflect.deleteProperty(cleanEnv, ENV_VARS.LAUNCH_SOURCE);
     Reflect.deleteProperty(cleanEnv, ENV_VARS.SCENARIO_NAME);
     Reflect.deleteProperty(cleanEnv, ENV_VARS.SCENARIO_INTERVAL_MS);
@@ -75,6 +76,7 @@ describe('loader', () => {
       expect(ENV_VARS.BAGS_API_KEY).toBe('BAGS_API_KEY');
       expect(ENV_VARS.SOLANA_RPC_URL).toBe('SOLANA_RPC_URL');
       expect(ENV_VARS.WALLET_PATH).toBe('WALLET_PATH');
+      expect(ENV_VARS.UI_HEADLESS).toBe('UI_HEADLESS');
       expect(ENV_VARS.LAUNCH_SOURCE).toBe('LAUNCH_SOURCE');
       expect(ENV_VARS.SCENARIO_NAME).toBe('SCENARIO_NAME');
       expect(ENV_VARS.SCENARIO_INTERVAL_MS).toBe('SCENARIO_INTERVAL_MS');
@@ -282,10 +284,18 @@ describe('loader', () => {
       expect(result.walletPath).toBe('/path/to/wallet.json');
     });
 
+    it('should load UI_HEADLESS from environment', () => {
+      process.env[ENV_VARS.UI_HEADLESS] = 'false';
+
+      const result = loadEnvConfig();
+      expect(result.ui).toEqual({ headless: false });
+    });
+
     it('should load all env vars when all are set', () => {
       process.env[ENV_VARS.BAGS_API_KEY] = 'api-key';
       process.env[ENV_VARS.SOLANA_RPC_URL] = 'https://rpc.example.com';
       process.env[ENV_VARS.WALLET_PATH] = '/wallet/path.json';
+      process.env[ENV_VARS.UI_HEADLESS] = 'false';
       process.env[ENV_VARS.LAUNCH_SOURCE] = 'scenario';
       process.env[ENV_VARS.SCENARIO_NAME] = 'mixed-opportunities';
       process.env[ENV_VARS.SCENARIO_INTERVAL_MS] = '1500';
@@ -296,6 +306,9 @@ describe('loader', () => {
         bagsApiKey: 'api-key',
         solanaRpcUrl: 'https://rpc.example.com',
         walletPath: '/wallet/path.json',
+        ui: {
+          headless: false,
+        },
         launchSource: {
           type: 'scenario',
           scenarioName: 'mixed-opportunities',
@@ -309,6 +322,7 @@ describe('loader', () => {
       process.env[ENV_VARS.BAGS_API_KEY] = '';
       process.env[ENV_VARS.SOLANA_RPC_URL] = '';
       process.env[ENV_VARS.WALLET_PATH] = '';
+      process.env[ENV_VARS.UI_HEADLESS] = '';
       process.env[ENV_VARS.LAUNCH_SOURCE] = '';
       process.env[ENV_VARS.SCENARIO_NAME] = '';
       process.env[ENV_VARS.SCENARIO_INTERVAL_MS] = '';

@@ -42,6 +42,20 @@ export interface PreparedSwap {
   quote: TradeQuote;
   /** When this prepared swap expires */
   expiresAt: Date;
+  /** Optional simulated execution payload for paper trading */
+  simulatedExecution?: SimulatedExecution;
+}
+
+/**
+ * Simulated execution result used by paper-trading runtimes.
+ */
+export interface SimulatedExecution {
+  /** Synthetic transaction signature */
+  signature: string;
+  /** Simulated execution price in SOL per token */
+  executedPrice: number;
+  /** Number of tokens received */
+  tokensReceived: number;
 }
 
 /**

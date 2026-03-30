@@ -152,11 +152,15 @@ SOLANA_RPC_URL=https://api.mainnet-beta.solana.com
 # Required: Path to your wallet keypair file
 WALLET_PATH=/path/to/your/wallet.json
 
-# Optional: launch source for testing
-# "live" uses the Bags restream, "scenario" injects synthetic launches
+# Optional UI override
+# Set to false to force the OpenTUI dashboard
+UI_HEADLESS=true
+
+# Optional low-level launch source overrides
+# Most users should prefer `bun run simulate` or `bun run simulate:history`
 LAUNCH_SOURCE=live
 
-# Optional: scenario settings (used when LAUNCH_SOURCE=scenario)
+# Optional low-level scenario settings (used when LAUNCH_SOURCE=scenario)
 SCENARIO_NAME=mixed-opportunities
 SCENARIO_INTERVAL_MS=2500
 SCENARIO_DISABLE_TRADING=true
@@ -259,38 +263,49 @@ bun start
 # Development mode (uses TypeScript directly with hot reload)
 bun run dev
 
-# Scenario mode for local/testnet pipeline testing
-bun run dev:scenario
+# Interactive paper-trading market simulation
+bun run simulate
+
+# Deterministic history-driven simulation
+bun run simulate:history -- tests/fixtures/simulation-history.sample.json
 ```
 
-### Scenario Testing on Testnet
+### Market Simulation
 
-Using `SOLANA_RPC_URL=https://api.testnet.solana.com` does not make the live Bags restream produce testnet launches. If you want repeatable local testing, switch the launch source to `scenario`.
+Using `SOLANA_RPC_URL=https://api.testnet.solana.com` does not make the live Bags restream produce testnet launches. If you want paper trading or reproducible testing, use the dedicated simulation scripts.
 
 ```bash
 BAGS_API_KEY=your_bags_api_key_here
 SOLANA_RPC_URL=https://api.testnet.solana.com
 WALLET_PATH=~/.config/solana/id.json
-LAUNCH_SOURCE=scenario
-SCENARIO_NAME=mixed-opportunities
-SCENARIO_INTERVAL_MS=2500
-SCENARIO_DISABLE_TRADING=true
 ```
 
-Then start the bot:
+Start interactive paper trading:
 
 ```bash
-bun run dev
+bun run simulate
 ```
 
-The bundled `mixed-opportunities` scenario loops through four synthetic launch types:
+Start deterministic history replay:
+
+```bash
+bun run simulate:history -- tests/fixtures/simulation-history.sample.json
+```
+
+The interactive simulation uses the bundled `mixed-opportunities` market profile, which loops through four synthetic launch types:
 
 - `high-conviction`: strong creator, social, and liquidity signals
 - `borderline`: barely clears the alert threshold
 - `weak-creator`: polished metadata with weak creator trust
 - `liquidity-trap`: attractive surface signals with bad liquidity metrics
 
-When `SCENARIO_DISABLE_TRADING=true`, pressing `b` will not send a quote request or transaction. This mode is intended for filter, scoring, queue, and UI/headless-flow testing.
+Simulation mode paper-trades the full bot flow:
+
+- launches are injected locally
+- quotes, prepared swaps, fills, and signatures are simulated
+- positions are opened normally
+- prices evolve over time
+- exit signals trigger from simulated prices
 
 ### Dashboard Controls
 

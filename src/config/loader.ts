@@ -46,6 +46,7 @@ export const ENV_VARS = {
   BAGS_API_KEY: 'BAGS_API_KEY',
   SOLANA_RPC_URL: 'SOLANA_RPC_URL',
   WALLET_PATH: 'WALLET_PATH',
+  UI_HEADLESS: 'UI_HEADLESS',
   LAUNCH_SOURCE: 'LAUNCH_SOURCE',
   SCENARIO_NAME: 'SCENARIO_NAME',
   SCENARIO_INTERVAL_MS: 'SCENARIO_INTERVAL_MS',
@@ -118,6 +119,14 @@ export function loadEnvConfig(): PartialBotConfig {
   const walletPath = process.env[ENV_VARS.WALLET_PATH];
   if (walletPath !== undefined && walletPath !== '') {
     config.walletPath = walletPath;
+  }
+
+  const uiHeadless = process.env[ENV_VARS.UI_HEADLESS];
+  if (uiHeadless !== undefined && uiHeadless !== '') {
+    config.ui = {
+      ...config.ui,
+      headless: uiHeadless.toLowerCase() === 'true',
+    };
   }
 
   const launchSourceType = process.env[ENV_VARS.LAUNCH_SOURCE];

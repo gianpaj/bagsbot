@@ -11,6 +11,7 @@
  */
 
 import { Connection, Keypair } from '@solana/web3.js';
+import { BagsSDK } from '@bagsfm/bags-sdk';
 import { loadConfig } from './config/loader.js';
 import { logger } from './utils/logger.js';
 import { createBagsBot } from './bot.js';
@@ -73,13 +74,6 @@ async function main(): Promise<void> {
     }
 
     // Initialize Bags SDK
-    appLogger.info('Initializing Bags SDK...');
-    const bagsSDK = createBagsSDK(config.bagsApiKey, connection);
-
-    // Create trade service adapter
-    const bagsTradeService = createTradeServiceAdapter(bagsSDK, walletPublicKey, connection);
-    appLogger.info('Trade service initialized');
-
     // Create launch source for live or scenario launch events
     const launchSource = createLaunchSourceRuntime(config);
     appLogger.info('Launch source created', {
@@ -87,21 +81,39 @@ async function main(): Promise<void> {
       description: launchSource.description,
     });
 
+    let bagsSDK: BagsSDK | null = null;
+    if (
+      launchSource.tradeService === undefined ||
+      launchSource.filterServiceOverrides === undefined
+    ) {
+      appLogger.info('Initializing Bags SDK...');
+      bagsSDK = createBagsSDK(config.bagsApiKey, connection);
+    }
+
+    const bagsTradeService =
+      launchSource.tradeService ??
+      createTradeServiceAdapter(bagsSDK as BagsSDK, walletPublicKey, connection);
+    appLogger.info('Trade service initialized');
+
     // Create filter registry with all filters
     const filterRegistry = createFilterRegistry(
       config,
-      bagsSDK,
+      bagsSDK ?? ({} as BagsSDK),
       launchSource.filterServiceOverrides
     );
     appLogger.info('Filter registry created');
 
     // Create the bot instance
-    const bot = createBagsBot({
+    const botConfig = {
       config,
       restreamClient: launchSource.restreamClient,
       bagsTradeService,
       filterRegistry,
-    });
+      ...(launchSource.simulationEngine !== undefined
+        ? { simulationEngine: launchSource.simulationEngine }
+        : {}),
+    };
+    const bot = createBagsBot(botConfig);
     appLogger.info('BagsBot instance created');
 
     // Initialize and start the bot

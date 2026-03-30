@@ -33,14 +33,9 @@ describe('scenario-runtime', () => {
     await vi.advanceTimersByTimeAsync(1000);
     await vi.advanceTimersByTimeAsync(1000);
     await vi.advanceTimersByTimeAsync(1000);
+    await vi.advanceTimersByTimeAsync(1);
 
-    expect(launches.slice(0, 5)).toEqual([
-      'ALPHA',
-      'BETA',
-      'GHOST',
-      'DRAIN',
-      'ALPHA',
-    ]);
+    expect(launches.slice(0, 5)).toEqual(['ALPHA', 'BETA', 'GHOST', 'DRAIN', 'ALPHA']);
   });
 
   it('should provide matching synthetic liquidity and creator data', async () => {

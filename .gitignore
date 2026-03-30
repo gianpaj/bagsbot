@@ -32,6 +32,7 @@ coverage/
 .cache/
 .eslintcache
 *.tsbuildinfo
+artifacts/
 
 # Wallet files (security)
 *.json.wallet
