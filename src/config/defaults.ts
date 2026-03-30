@@ -13,7 +13,7 @@ import type {
 } from '../types/filters.js';
 import type { TradeConfig } from '../types/trading.js';
 import type { ExitConfig } from '../types/positions.js';
-import type { ScoringConfig, UIConfig } from '../types/config.js';
+import type { LaunchSourceConfig, ScoringConfig, UIConfig } from '../types/config.js';
 
 /**
  * Default creator filter configuration
@@ -93,6 +93,16 @@ export const DEFAULT_UI_CONFIG: UIConfig = {
   opportunityTimeoutSec: 60,
   soundEnabled: true,
   headless: true, // Default to headless until OpenTUI issues are resolved
+};
+
+/**
+ * Default launch source configuration
+ */
+export const DEFAULT_LAUNCH_SOURCE_CONFIG: LaunchSourceConfig = {
+  type: 'live',
+  scenarioName: 'mixed-opportunities',
+  scenarioIntervalMs: 2500,
+  disableTrading: true,
 };
 
 /**

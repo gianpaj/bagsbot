@@ -20,6 +20,7 @@ export interface HeadlessCliCallbacks {
   onBuy: (opportunityId: string, amount: number) => void;
   onSkip: (opportunityId: string) => void;
   onQuit: () => void;
+  canBuy?: (opportunity: Opportunity) => string | null;
 }
 
 /**
@@ -111,11 +112,13 @@ export class HeadlessCli {
     switch (key) {
       case 'b':
         if (this.currentOpportunity) {
+          const blockReason = this.callbacks.canBuy?.(this.currentOpportunity) ?? null;
+          if (blockReason !== null) {
+            console.log(blockReason);
+            break;
+          }
           console.log(`Buying ${this.currentOpportunity.launch.symbol}...`);
-          this.callbacks.onBuy(
-            this.currentOpportunity.id,
-            this.currentOpportunity.suggestedAmount
-          );
+          this.callbacks.onBuy(this.currentOpportunity.id, this.currentOpportunity.suggestedAmount);
           this.currentOpportunity = null;
         } else {
           console.log('No opportunity available to buy');

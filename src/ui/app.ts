@@ -43,6 +43,7 @@ export type CliRenderer = any;
 export type RenderContext = any;
 
 const createCliRenderer: any = (OpenTUI as any).createCliRenderer;
+const ConsolePosition: any = (OpenTUI as any).ConsolePosition;
 const RootRenderable: any = (OpenTUI as any).RootRenderable;
 
 // Preserve the old type export so existing component modules still compile.
@@ -88,9 +89,28 @@ export class OpenTUIApp {
         targetFps: 30,
         useAlternateScreen: true,
         useMouse: false,
-        useConsole: false,
+        useConsole: true,
+        consoleOptions: {
+          position: ConsolePosition?.BOTTOM ?? 'bottom',
+          sizePercent: 28,
+          title: 'Raw Logs',
+          maxStoredLogs: 3000,
+          maxDisplayLines: 4000,
+          titleBarColor: '#10161f',
+          titleBarTextColor: '#d9e2f2',
+          backgroundColor: '#111821',
+          colorDefault: '#f5f7fa',
+          colorInfo: '#35f0ff',
+          colorWarn: '#f6c453',
+          colorError: '#ff8c8c',
+          colorDebug: '#98a3b5',
+          selectionColor: '#335b88',
+          copyButtonColor: '#35f0ff',
+          keyBindings: [{ name: 'y', ctrl: true, action: 'copy-selection' }],
+        },
       });
 
+      this.initializeConsoleDrawer();
       this.setupKeyboardInput();
       this.rootRenderable = new RootRenderable(this.renderer);
       this.rootRenderable.add(createMainLayout(this.state, this.config.botConfig));
@@ -119,6 +139,17 @@ export class OpenTUIApp {
     this.renderer.on('key', (data: Buffer) => {
       const keyStr = data.toString('utf-8').toLowerCase();
 
+      if (keyStr === '`' || keyStr === '"') {
+        this.toggleConsoleDrawer();
+        return;
+      }
+
+      // When the raw log drawer is visible, it owns navigation and copy/resize
+      // shortcuts. The dashboard should not react to overlapping keys.
+      if (this.renderer?.console?.visible === true) {
+        return;
+      }
+
       switch (keyStr) {
         case '\u001b[a':
         case 'k':
@@ -141,6 +172,28 @@ export class OpenTUIApp {
           this.logger.debug('Key pressed', { key: keyStr });
       }
     });
+  }
+
+  private initializeConsoleDrawer(): void {
+    if (this.renderer === null) {
+      return;
+    }
+
+    this.renderer.console.onCopySelection = (text: string) => {
+      const success = this.renderer?.copyToClipboardOSC52(text) ?? false;
+      if (!success) {
+        this.logger.warn('Clipboard copy failed for console selection');
+      }
+    };
+  }
+
+  private toggleConsoleDrawer(): void {
+    if (this.renderer === null) {
+      return;
+    }
+
+    this.renderer.console.toggle();
+    this.renderer.requestRender();
   }
 
   private handleBuyOpportunity(): void {

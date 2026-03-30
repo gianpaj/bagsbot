@@ -205,6 +205,12 @@ export class BagsBot {
               this.logger.error('Error confirming opportunity', { error: err });
             });
           },
+          canBuy: () => {
+            if (!this.isTradingDisabledForLaunchSource()) {
+              return null;
+            }
+            return `Scenario mode: trading disabled, opportunity left pending (${this.config.launchSource.scenarioName}).`;
+          },
           onSkip: (opportunityId) => {
             this.handleOpportunityRejection(opportunityId);
           },
@@ -337,7 +343,11 @@ export class BagsBot {
     // If it doesn't pass the threshold, skip it
     if (!filterResult.passed) {
       this.logger.debug('Launch did not pass filter threshold', { mint: event.mint });
-      this.uiApp?.skipAgentWork(event.mint, 'Opportunity Manager', 'launch did not meet alert threshold');
+      this.uiApp?.skipAgentWork(
+        event.mint,
+        'Opportunity Manager',
+        'launch did not meet alert threshold'
+      );
       this.uiApp?.skipAgentWork(event.mint, 'Trader', 'trade not created');
       this.uiApp?.skipAgentWork(event.mint, 'Position Monitor', 'no position to monitor');
       return;
@@ -403,6 +413,20 @@ export class BagsBot {
         return;
       }
 
+      if (this.isTradingDisabledForLaunchSource()) {
+        const message = `Trading is disabled for scenario mode (${this.config.launchSource.scenarioName}).`;
+        this.logger.warn('Trade blocked for launch source', {
+          opportunityId,
+          launchSource: this.config.launchSource.type,
+          scenarioName: this.config.launchSource.scenarioName,
+        });
+        this.uiApp?.addSystemMessage(message, opportunity.launch.mint);
+        if (this.headlessCli !== null) {
+          this.headlessCli.showOpportunity(opportunity);
+        }
+        return;
+      }
+
       this.alertSystem.confirm(opportunityId, amount);
       this.uiApp?.startTradeExecution(opportunity.launch.mint, amount);
 
@@ -423,10 +447,7 @@ export class BagsBot {
       }
 
       // Prepare and execute trade
-      const prepared = await this.tradeExecutor.prepareSwap(
-        opportunity.launch.mint,
-        amount
-      );
+      const prepared = await this.tradeExecutor.prepareSwap(opportunity.launch.mint, amount);
       const tradeResult = await this.tradeExecutor.executeSwap(prepared);
 
       if (!tradeResult.success) {
@@ -570,6 +591,10 @@ export class BagsBot {
     }
   }
 
+  private isTradingDisabledForLaunchSource(): boolean {
+    return this.config.launchSource.type === 'scenario' && this.config.launchSource.disableTrading;
+  }
+
   /**
    * Gracefully shut down the bot
    *
@@ -592,7 +617,9 @@ export class BagsBot {
       this.isRunning = false;
 
       // Stop accepting new events
-      this.unsubscribeHandlers.forEach((unsub) => { unsub(); });
+      this.unsubscribeHandlers.forEach((unsub) => {
+        unsub();
+      });
       this.unsubscribeHandlers = [];
 
       // Stop exit monitor

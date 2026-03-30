@@ -21,6 +21,7 @@ import {
   DEFAULT_CREATOR_FILTER,
   DEFAULT_EXIT_CONFIG,
   DEFAULT_LIQUIDITY_FILTER,
+  DEFAULT_LAUNCH_SOURCE_CONFIG,
   DEFAULT_MAX_OPEN_POSITIONS,
   DEFAULT_MAX_POSITION_PERCENT,
   DEFAULT_SCORING_CONFIG,
@@ -45,6 +46,10 @@ export const ENV_VARS = {
   BAGS_API_KEY: 'BAGS_API_KEY',
   SOLANA_RPC_URL: 'SOLANA_RPC_URL',
   WALLET_PATH: 'WALLET_PATH',
+  LAUNCH_SOURCE: 'LAUNCH_SOURCE',
+  SCENARIO_NAME: 'SCENARIO_NAME',
+  SCENARIO_INTERVAL_MS: 'SCENARIO_INTERVAL_MS',
+  SCENARIO_DISABLE_TRADING: 'SCENARIO_DISABLE_TRADING',
 } as const;
 
 /**
@@ -115,6 +120,48 @@ export function loadEnvConfig(): PartialBotConfig {
     config.walletPath = walletPath;
   }
 
+  const launchSourceType = process.env[ENV_VARS.LAUNCH_SOURCE];
+  const scenarioName = process.env[ENV_VARS.SCENARIO_NAME];
+  const scenarioIntervalMs = process.env[ENV_VARS.SCENARIO_INTERVAL_MS];
+  const scenarioDisableTrading = process.env[ENV_VARS.SCENARIO_DISABLE_TRADING];
+
+  if (
+    (launchSourceType !== undefined && launchSourceType !== '') ||
+    (scenarioName !== undefined && scenarioName !== '') ||
+    (scenarioIntervalMs !== undefined && scenarioIntervalMs !== '') ||
+    (scenarioDisableTrading !== undefined && scenarioDisableTrading !== '')
+  ) {
+    config.launchSource = {};
+  }
+
+  if (launchSourceType !== undefined && launchSourceType !== '') {
+    config.launchSource = {
+      ...config.launchSource,
+      type: launchSourceType as 'live' | 'scenario',
+    };
+  }
+
+  if (scenarioName !== undefined && scenarioName !== '') {
+    config.launchSource = {
+      ...config.launchSource,
+      scenarioName,
+    };
+  }
+
+  if (scenarioIntervalMs !== undefined && scenarioIntervalMs !== '') {
+    config.launchSource = {
+      ...config.launchSource,
+      scenarioIntervalMs: Number(scenarioIntervalMs),
+    };
+  }
+
+  if (scenarioDisableTrading !== undefined && scenarioDisableTrading !== '') {
+    config.launchSource = {
+      ...config.launchSource,
+      disableTrading: scenarioDisableTrading.toLowerCase() === 'true',
+    };
+  }
+
   return config;
 }
 
@@ -125,10 +172,7 @@ export function loadEnvConfig(): PartialBotConfig {
  * @param source - Source object (values override target)
  * @returns Merged object
  */
-export function deepMerge<T extends Record<string, unknown>>(
-  target: T,
-  source: Partial<T>
-): T {
+export function deepMerge<T extends Record<string, unknown>>(target: T, source: Partial<T>): T {
   const result = { ...target };
 
   for (const key in source) {
@@ -198,6 +242,7 @@ export function getDefaultConfig(): Omit<BotConfig, 'bagsApiKey'> {
     },
     trading: { ...DEFAULT_TRADING_CONFIG },
     exits: { ...DEFAULT_EXIT_CONFIG },
+    launchSource: { ...DEFAULT_LAUNCH_SOURCE_CONFIG },
     ui: { ...DEFAULT_UI_CONFIG },
   };
 }
@@ -214,9 +259,7 @@ export function getDefaultConfig(): Omit<BotConfig, 'bagsApiKey'> {
  * @returns Validated bot configuration
  * @throws ConfigError if configuration is invalid or missing required values
  */
-export async function loadConfig(
-  configFilePath: string = CONFIG_FILE_PATH
-): Promise<BotConfig> {
+export async function loadConfig(configFilePath: string = CONFIG_FILE_PATH): Promise<BotConfig> {
   // Load from file
   const fileConfig = await loadConfigFile(configFilePath);
 
@@ -231,10 +274,7 @@ export async function loadConfig(
     defaults as unknown as Record<string, unknown>,
     fileConfig as unknown as Record<string, unknown>
   );
-  const merged = deepMerge(
-    mergedWithFile,
-    envConfig as unknown as Record<string, unknown>
-  );
+  const merged = deepMerge(mergedWithFile, envConfig as unknown as Record<string, unknown>);
 
   // Expand tilde in wallet path if present
   if (typeof merged['walletPath'] === 'string') {
@@ -245,9 +285,7 @@ export async function loadConfig(
   const result = botConfigSchema.safeParse(merged);
 
   if (!result.success) {
-    const errors = result.error.issues
-      .map((e) => `${e.path.join('.')}: ${e.message}`)
-      .join('; ');
+    const errors = result.error.issues.map((e) => `${e.path.join('.')}: ${e.message}`).join('; ');
     throw new ConfigError(`Invalid configuration: ${errors}`);
   }
 

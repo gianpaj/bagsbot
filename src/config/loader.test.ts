@@ -20,6 +20,7 @@ import {
 import {
   DEFAULT_CREATOR_FILTER,
   DEFAULT_EXIT_CONFIG,
+  DEFAULT_LAUNCH_SOURCE_CONFIG,
   DEFAULT_LIQUIDITY_FILTER,
   DEFAULT_MAX_OPEN_POSITIONS,
   DEFAULT_MAX_POSITION_PERCENT,
@@ -52,6 +53,10 @@ describe('loader', () => {
     Reflect.deleteProperty(cleanEnv, ENV_VARS.BAGS_API_KEY);
     Reflect.deleteProperty(cleanEnv, ENV_VARS.SOLANA_RPC_URL);
     Reflect.deleteProperty(cleanEnv, ENV_VARS.WALLET_PATH);
+    Reflect.deleteProperty(cleanEnv, ENV_VARS.LAUNCH_SOURCE);
+    Reflect.deleteProperty(cleanEnv, ENV_VARS.SCENARIO_NAME);
+    Reflect.deleteProperty(cleanEnv, ENV_VARS.SCENARIO_INTERVAL_MS);
+    Reflect.deleteProperty(cleanEnv, ENV_VARS.SCENARIO_DISABLE_TRADING);
     process.env = cleanEnv;
   });
 
@@ -70,6 +75,10 @@ describe('loader', () => {
       expect(ENV_VARS.BAGS_API_KEY).toBe('BAGS_API_KEY');
       expect(ENV_VARS.SOLANA_RPC_URL).toBe('SOLANA_RPC_URL');
       expect(ENV_VARS.WALLET_PATH).toBe('WALLET_PATH');
+      expect(ENV_VARS.LAUNCH_SOURCE).toBe('LAUNCH_SOURCE');
+      expect(ENV_VARS.SCENARIO_NAME).toBe('SCENARIO_NAME');
+      expect(ENV_VARS.SCENARIO_INTERVAL_MS).toBe('SCENARIO_INTERVAL_MS');
+      expect(ENV_VARS.SCENARIO_DISABLE_TRADING).toBe('SCENARIO_DISABLE_TRADING');
     });
   });
 
@@ -164,6 +173,7 @@ describe('loader', () => {
       );
       expect(config.trading).toEqual(DEFAULT_TRADING_CONFIG);
       expect(config.exits).toEqual(DEFAULT_EXIT_CONFIG);
+      expect(config.launchSource).toEqual(DEFAULT_LAUNCH_SOURCE_CONFIG);
       expect(config.ui).toEqual(DEFAULT_UI_CONFIG);
     });
 
@@ -276,12 +286,22 @@ describe('loader', () => {
       process.env[ENV_VARS.BAGS_API_KEY] = 'api-key';
       process.env[ENV_VARS.SOLANA_RPC_URL] = 'https://rpc.example.com';
       process.env[ENV_VARS.WALLET_PATH] = '/wallet/path.json';
+      process.env[ENV_VARS.LAUNCH_SOURCE] = 'scenario';
+      process.env[ENV_VARS.SCENARIO_NAME] = 'mixed-opportunities';
+      process.env[ENV_VARS.SCENARIO_INTERVAL_MS] = '1500';
+      process.env[ENV_VARS.SCENARIO_DISABLE_TRADING] = 'false';
 
       const result = loadEnvConfig();
       expect(result).toEqual({
         bagsApiKey: 'api-key',
         solanaRpcUrl: 'https://rpc.example.com',
         walletPath: '/wallet/path.json',
+        launchSource: {
+          type: 'scenario',
+          scenarioName: 'mixed-opportunities',
+          scenarioIntervalMs: 1500,
+          disableTrading: false,
+        },
       });
     });
 
@@ -289,17 +309,34 @@ describe('loader', () => {
       process.env[ENV_VARS.BAGS_API_KEY] = '';
       process.env[ENV_VARS.SOLANA_RPC_URL] = '';
       process.env[ENV_VARS.WALLET_PATH] = '';
+      process.env[ENV_VARS.LAUNCH_SOURCE] = '';
+      process.env[ENV_VARS.SCENARIO_NAME] = '';
+      process.env[ENV_VARS.SCENARIO_INTERVAL_MS] = '';
+      process.env[ENV_VARS.SCENARIO_DISABLE_TRADING] = '';
 
       const result = loadEnvConfig();
       expect(result).toEqual({});
+    });
+
+    it('should load scenario launch source values from environment', () => {
+      process.env[ENV_VARS.LAUNCH_SOURCE] = 'scenario';
+      process.env[ENV_VARS.SCENARIO_NAME] = 'mixed-opportunities';
+      process.env[ENV_VARS.SCENARIO_INTERVAL_MS] = '3000';
+      process.env[ENV_VARS.SCENARIO_DISABLE_TRADING] = 'true';
+
+      const result = loadEnvConfig();
+      expect(result.launchSource).toEqual({
+        type: 'scenario',
+        scenarioName: 'mixed-opportunities',
+        scenarioIntervalMs: 3000,
+        disableTrading: true,
+      });
     });
   });
 
   describe('loadConfig', () => {
     it('should load config with API key from env var', async () => {
-      mockedReadFile.mockRejectedValue(
-        Object.assign(new Error('ENOENT'), { code: 'ENOENT' })
-      );
+      mockedReadFile.mockRejectedValue(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }));
       process.env[ENV_VARS.BAGS_API_KEY] = 'test-api-key';
 
       const config = await loadConfig();
@@ -347,9 +384,7 @@ describe('loader', () => {
     });
 
     it('should throw ConfigError when API key is missing', async () => {
-      mockedReadFile.mockRejectedValue(
-        Object.assign(new Error('ENOENT'), { code: 'ENOENT' })
-      );
+      mockedReadFile.mockRejectedValue(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }));
 
       await expect(loadConfig()).rejects.toThrow(ConfigError);
       await expect(loadConfig()).rejects.toThrow(/bagsApiKey/);
@@ -466,9 +501,16 @@ describe('loader', () => {
           checkIntervalMs: 3000,
           autoSellEnabled: true,
         },
+        launchSource: {
+          type: 'scenario',
+          scenarioName: 'mixed-opportunities',
+          scenarioIntervalMs: 2000,
+          disableTrading: true,
+        },
         ui: {
           opportunityTimeoutSec: 30,
           soundEnabled: false,
+          headless: true,
         },
       };
       mockedReadFile.mockResolvedValue(JSON.stringify(validConfig));
@@ -491,9 +533,7 @@ describe('loader', () => {
     });
 
     it('should expand tilde in wallet path from env var', async () => {
-      mockedReadFile.mockRejectedValue(
-        Object.assign(new Error('ENOENT'), { code: 'ENOENT' })
-      );
+      mockedReadFile.mockRejectedValue(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }));
       process.env[ENV_VARS.BAGS_API_KEY] = 'test-key';
       process.env[ENV_VARS.WALLET_PATH] = '~/env-wallet.json';
 
@@ -602,6 +642,23 @@ describe('loader', () => {
 
       await expect(loadConfig()).rejects.toThrow(ConfigError);
       await expect(loadConfig()).rejects.toThrow(/opportunityTimeoutSec/);
+    });
+
+    it('should validate launch source config', async () => {
+      mockedReadFile.mockResolvedValue(
+        JSON.stringify({
+          bagsApiKey: 'test-key',
+          launchSource: {
+            type: 'scenario',
+            scenarioName: '',
+            scenarioIntervalMs: 10,
+            disableTrading: true,
+          },
+        })
+      );
+
+      await expect(loadConfig()).rejects.toThrow(ConfigError);
+      await expect(loadConfig()).rejects.toThrow(/scenarioName|scenarioIntervalMs/);
     });
   });
 });

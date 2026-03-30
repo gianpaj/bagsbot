@@ -8,6 +8,8 @@
     "build": "tsc",
     "start": "node dist/index.js",
     "dev": "bun --env-file=.env src/index.ts",
+    "dev:scenario": "LAUNCH_SOURCE=scenario bun --env-file=.env src/index.ts",
+    "scenario:mixed": "LAUNCH_SOURCE=scenario SCENARIO_NAME=mixed-opportunities bun --env-file=.env src/index.ts",
     "top-tokens": "bun --env-file=.env src/cli/top-tokens.tsx",
     "test": "vitest",
     "test:run": "vitest run",

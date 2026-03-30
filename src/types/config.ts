@@ -38,6 +38,20 @@ export interface ScoringConfig {
 }
 
 /**
+ * Launch source selection and scenario settings
+ */
+export interface LaunchSourceConfig {
+  /** Source of launch events */
+  type: 'live' | 'scenario';
+  /** Scenario preset name when using scenario mode */
+  scenarioName: string;
+  /** Delay between injected launch events in milliseconds */
+  scenarioIntervalMs: number;
+  /** Block trade execution while using synthetic launches */
+  disableTrading: boolean;
+}
+
+/**
  * Configuration for the user interface
  */
 export interface UIConfig {
@@ -76,6 +90,8 @@ export interface BotConfig {
   trading: TradeConfig;
   /** Exit strategy configuration */
   exits: ExitConfig;
+  /** Launch source configuration */
+  launchSource: LaunchSourceConfig;
   /** UI configuration */
   ui: UIConfig;
 }

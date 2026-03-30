@@ -17,7 +17,7 @@ import { createBagsBot } from './bot.js';
 import {
   createBagsSDK,
   createTradeServiceAdapter,
-  createRestreamClient,
+  createLaunchSourceRuntime,
   createFilterRegistry,
 } from './sdk/index.js';
 import { WalletManager } from './trading/wallet.js';
@@ -80,20 +80,25 @@ async function main(): Promise<void> {
     const bagsTradeService = createTradeServiceAdapter(bagsSDK, walletPublicKey, connection);
     appLogger.info('Trade service initialized');
 
-    // Create Restream client for real-time launch events
-    const restreamClient = createRestreamClient({
-      apiKey: config.bagsApiKey,
+    // Create launch source for live or scenario launch events
+    const launchSource = createLaunchSourceRuntime(config);
+    appLogger.info('Launch source created', {
+      type: config.launchSource.type,
+      description: launchSource.description,
     });
-    appLogger.info('Restream client created');
 
     // Create filter registry with all filters
-    const filterRegistry = createFilterRegistry(config, bagsSDK);
+    const filterRegistry = createFilterRegistry(
+      config,
+      bagsSDK,
+      launchSource.filterServiceOverrides
+    );
     appLogger.info('Filter registry created');
 
     // Create the bot instance
     const bot = createBagsBot({
       config,
-      restreamClient,
+      restreamClient: launchSource.restreamClient,
       bagsTradeService,
       filterRegistry,
     });

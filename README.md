@@ -151,6 +151,15 @@ SOLANA_RPC_URL=https://api.mainnet-beta.solana.com
 
 # Required: Path to your wallet keypair file
 WALLET_PATH=/path/to/your/wallet.json
+
+# Optional: launch source for testing
+# "live" uses the Bags restream, "scenario" injects synthetic launches
+LAUNCH_SOURCE=live
+
+# Optional: scenario settings (used when LAUNCH_SOURCE=scenario)
+SCENARIO_NAME=mixed-opportunities
+SCENARIO_INTERVAL_MS=2500
+SCENARIO_DISABLE_TRADING=true
 ```
 
 ### Configuration File
@@ -249,7 +258,39 @@ bun start
 
 # Development mode (uses TypeScript directly with hot reload)
 bun run dev
+
+# Scenario mode for local/testnet pipeline testing
+bun run dev:scenario
 ```
+
+### Scenario Testing on Testnet
+
+Using `SOLANA_RPC_URL=https://api.testnet.solana.com` does not make the live Bags restream produce testnet launches. If you want repeatable local testing, switch the launch source to `scenario`.
+
+```bash
+BAGS_API_KEY=your_bags_api_key_here
+SOLANA_RPC_URL=https://api.testnet.solana.com
+WALLET_PATH=~/.config/solana/id.json
+LAUNCH_SOURCE=scenario
+SCENARIO_NAME=mixed-opportunities
+SCENARIO_INTERVAL_MS=2500
+SCENARIO_DISABLE_TRADING=true
+```
+
+Then start the bot:
+
+```bash
+bun run dev
+```
+
+The bundled `mixed-opportunities` scenario loops through four synthetic launch types:
+
+- `high-conviction`: strong creator, social, and liquidity signals
+- `borderline`: barely clears the alert threshold
+- `weak-creator`: polished metadata with weak creator trust
+- `liquidity-trap`: attractive surface signals with bad liquidity metrics
+
+When `SCENARIO_DISABLE_TRADING=true`, pressing `b` will not send a quote request or transaction. This mode is intended for filter, scoring, queue, and UI/headless-flow testing.
 
 ### Dashboard Controls
 
@@ -259,6 +300,10 @@ bun run dev
 | `↓` / `j` | Select next tracked coin |
 | `b` | Buy the selected pending opportunity at the suggested amount |
 | `s` | Skip/reject the selected pending opportunity |
+| `` ` `` | Toggle the raw log drawer |
+| `Ctrl+Y` | Copy the current raw-log selection from the console drawer |
+| `Ctrl+P` / `Ctrl+O` | Move the console drawer between dock positions |
+| `+` / `-` | Resize the console drawer |
 | `Q` | Quit the bot |
 
 ### Dashboard Layout
@@ -268,6 +313,7 @@ The main bot UI is now a fixed three-area dashboard:
 - `Progress`: tracked launches and opportunities, rendered as an agent pipeline per coin
 - `Messages & Tools`: reverse-chronological execution log of tool, reasoning, and system events
 - `Current Report / New Analysis`: synthesized analysis for the currently selected coin
+- `Raw Logs`: an OpenTUI dockable console drawer for intercepted stdout/stderr and copyable low-level logs
 - footer: tracked items, active opportunities, open positions, tool-call count, generated reports, and uptime
 
 Selection is keyboard-driven and item-centric. The bottom report pane always follows the currently selected tracked coin.

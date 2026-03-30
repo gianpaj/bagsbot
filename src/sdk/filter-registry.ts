@@ -27,6 +27,17 @@ import { logger } from '../utils/logger.js';
 const registryLogger = logger.child({ module: 'filter-registry' });
 
 /**
+ * Optional service overrides for non-production launch sources.
+ */
+export interface FilterServiceOverrides {
+  stateService?: IStateService;
+  externalApiService?: IExternalApiService;
+  launchHistoryService?: ILaunchHistoryService;
+  socialApiService?: ISocialApiService;
+  liquidityDataService?: ILiquidityDataService;
+}
+
+/**
  * Adapter that wraps the Bags SDK StateService to match our IStateService interface
  */
 class StateServiceAdapter implements IStateService {
@@ -36,9 +47,7 @@ class StateServiceAdapter implements IStateService {
     this.sdk = sdk;
   }
 
-  async getLaunchWalletForTwitterUsername(
-    twitterUsername: string
-  ): Promise<PublicKey> {
+  async getLaunchWalletForTwitterUsername(twitterUsername: string): Promise<PublicKey> {
     // Use the SDK's state service to get launch wallet
     try {
       const result = await this.sdk.state.getLaunchWalletForTwitterUsername(twitterUsername);
@@ -103,18 +112,12 @@ class StateServiceAdapter implements IStateService {
  * In production, this would integrate with Twitter/TikTok APIs
  */
 class StubExternalApiService implements IExternalApiService {
-  getFollowerCount(
-    _provider: 'twitter' | 'tiktok',
-    _username: string
-  ): Promise<number | null> {
+  getFollowerCount(_provider: 'twitter' | 'tiktok', _username: string): Promise<number | null> {
     // Return null - actual implementation would call Twitter/TikTok API
     return Promise.resolve(null);
   }
 
-  getAccountAgeDays(
-    _provider: 'twitter' | 'tiktok',
-    _username: string
-  ): Promise<number | null> {
+  getAccountAgeDays(_provider: 'twitter' | 'tiktok', _username: string): Promise<number | null> {
     // Return null - actual implementation would call Twitter/TikTok API
     return Promise.resolve(null);
   }
@@ -156,10 +159,7 @@ class StubSocialApiService implements ISocialApiService {
     return Promise.resolve(null);
   }
 
-  getCommunitySize(
-    _telegramUrl: string,
-    _twitterUsername: string | null
-  ): Promise<number | null> {
+  getCommunitySize(_telegramUrl: string, _twitterUsername: string | null): Promise<number | null> {
     // Return null to indicate API unavailable
     return Promise.resolve(null);
   }
@@ -181,20 +181,22 @@ class StubLiquidityDataService implements ILiquidityDataService {
  *
  * @param config - Bot configuration containing filter settings
  * @param sdk - Initialized Bags SDK instance
+ * @param overrides - Optional service overrides for testing or synthetic sources
  * @returns Filter registry with all filters
  */
 export function createFilterRegistry(
   config: BotConfig,
-  sdk: BagsSDK
+  sdk: BagsSDK,
+  overrides: FilterServiceOverrides = {}
 ): FilterRegistry {
   registryLogger.info('Creating filter registry');
 
   // Create service adapters
-  const stateService = new StateServiceAdapter(sdk);
-  const externalApiService = new StubExternalApiService();
-  const launchHistoryService = new StubLaunchHistoryService();
-  const socialApiService = new StubSocialApiService();
-  const liquidityDataService = new StubLiquidityDataService();
+  const stateService = overrides.stateService ?? new StateServiceAdapter(sdk);
+  const externalApiService = overrides.externalApiService ?? new StubExternalApiService();
+  const launchHistoryService = overrides.launchHistoryService ?? new StubLaunchHistoryService();
+  const socialApiService = overrides.socialApiService ?? new StubSocialApiService();
+  const liquidityDataService = overrides.liquidityDataService ?? new StubLiquidityDataService();
 
   // Create filters with their dependencies
   // Note: createCreatorFilter takes dependencies first, then config
@@ -209,15 +211,9 @@ export function createFilterRegistry(
 
   const technicalFilter = createTechnicalFilter(config.filters.technical);
 
-  const socialFilter = createSocialFilter(
-    config.filters.social,
-    socialApiService
-  );
+  const socialFilter = createSocialFilter(config.filters.social, socialApiService);
 
-  const liquidityFilter = createLiquidityFilter(
-    config.filters.liquidity,
-    liquidityDataService
-  );
+  const liquidityFilter = createLiquidityFilter(config.filters.liquidity, liquidityDataService);
 
   registryLogger.info('Filter registry created', {
     filters: ['creator', 'technical', 'social', 'liquidity'],

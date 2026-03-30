@@ -5,5 +5,10 @@
  */
 
 export { BagsTradeServiceAdapter, createBagsSDK, createTradeServiceAdapter } from './adapter.js';
-export { RestreamClient, createRestreamClient, type RestreamClientConfig } from './restream-client.js';
-export { createFilterRegistry } from './filter-registry.js';
+export {
+  RestreamClient,
+  createRestreamClient,
+  type RestreamClientConfig,
+} from './restream-client.js';
+export { createFilterRegistry, type FilterServiceOverrides } from './filter-registry.js';
+export { createLaunchSourceRuntime, type LaunchSourceRuntime } from './launch-source.js';
