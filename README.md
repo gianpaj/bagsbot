@@ -135,6 +135,34 @@ bun run build
 bun start
 ```
 
+### Optional: UI Capture Tooling
+
+The repo includes a portable VHS-based capture workflow for the dashboard UI.
+
+- Native install: `brew install vhs ttyd` on macOS/Linux, or `winget install charmbracelet.vhs` on Windows
+- Fallback: if `vhs` is not installed locally, the capture script will use Docker with `ghcr.io/charmbracelet/vhs`
+
+Run a capture with:
+
+```bash
+pnpm capture:ui
+```
+
+By default this starts the mixed scenario stream, waits for the OpenTUI dashboard to render, then writes:
+
+- `artifacts/ui/dashboard-capture.png`
+- `artifacts/ui/dashboard-capture.gif`
+
+The capture tape forces `UI_HEADLESS=false` and `UI_CAPTURE_MODE=true` so the OpenTUI dashboard renders in a VHS-friendly mode even though the default config stays headless.
+
+Optional overrides:
+
+```bash
+CAPTURE_COMMAND="pnpm start" pnpm capture:ui
+CAPTURE_PNG_PATH="./artifacts/ui/live-dashboard.png" pnpm capture:ui
+CAPTURE_WAIT_TIMEOUT="45s" pnpm capture:ui
+```
+
 ## Configuration
 
 ### Environment Variables
