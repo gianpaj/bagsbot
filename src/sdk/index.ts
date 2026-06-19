@@ -14,8 +14,8 @@ export { createFilterRegistry, type FilterServiceOverrides } from './filter-regi
 export { createLaunchSourceRuntime, type LaunchSourceRuntime } from './launch-source.js';
 export {
   fetchRecentLaunches,
-  leaderboardItemToLaunchEvent,
+  baseAssetToLaunchEvent,
   resolveSeedRecentHours,
   DEFAULT_SEED_RECENT_HOURS,
-  type RecentLaunchesSource,
+  type FetchRecentLaunchesOptions,
 } from './recent-launches.js';

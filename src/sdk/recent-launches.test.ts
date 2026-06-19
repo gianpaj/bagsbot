@@ -1,90 +1,91 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   fetchRecentLaunches,
-  leaderboardItemToLaunchEvent,
+  baseAssetToLaunchEvent,
   resolveSeedRecentHours,
-  type RecentLaunchesSource,
 } from './recent-launches.js';
 
-type LeaderboardItem = Awaited<
-  ReturnType<RecentLaunchesSource['state']['getTopTokensByLifetimeFees']>
->[number];
-
-function makeItem(overrides: {
-  token: string;
-  createdAt?: string;
-  name?: string;
-  symbol?: string;
-  tokenInfo?: null;
-}): LeaderboardItem {
-  const base = {
-    token: overrides.token,
-    lifetimeFees: '0',
-    tokenSupply: null,
-    tokenLatestPrice: null,
-    creators: [
-      { wallet: 'CreatorWallet111', isCreator: true },
-      { wallet: 'OtherWallet222', isCreator: false },
-    ],
-    tokenInfo:
-      overrides.tokenInfo === null
-        ? null
-        : {
-            name: overrides.name ?? 'Test Token',
-            symbol: overrides.symbol ?? 'TEST',
-            icon: 'https://img/test.png',
-            dev: 'DevWallet333',
-            twitter: 'https://x.com/test',
-            firstPool: { id: 'pool', createdAt: overrides.createdAt ?? new Date().toISOString() },
-          },
-  };
-  return base as unknown as LeaderboardItem;
-}
-
-function makeSource(items: LeaderboardItem[]): RecentLaunchesSource {
+function makeBaseAsset(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
-    state: {
-      getTopTokensByLifetimeFees: vi.fn(async () => items),
-    },
-  } as unknown as RecentLaunchesSource;
+    id: 'Mint111BAGS',
+    name: 'Test Token',
+    symbol: 'TEST',
+    icon: 'https://img/test.png',
+    twitter: 'https://x.com/test',
+    website: 'https://bags.fm/Mint111BAGS',
+    dev: 'DevWallet333',
+    launchpad: 'bags.fun',
+    ...overrides,
+  };
 }
 
-describe('leaderboardItemToLaunchEvent', () => {
-  it('maps fields and prefers the creator wallet', () => {
-    const event = leaderboardItemToLaunchEvent(makeItem({ token: 'Mint1' }));
+function makeFetch(pools: unknown[]): typeof fetch {
+  return vi.fn(async () => ({
+    ok: true,
+    status: 200,
+    statusText: 'OK',
+    json: async () => ({ pools }),
+  })) as unknown as typeof fetch;
+}
+
+describe('baseAssetToLaunchEvent', () => {
+  it('maps fields and uses the dev wallet as creator', () => {
+    const event = baseAssetToLaunchEvent(makeBaseAsset() as never);
     expect(event).not.toBeNull();
-    expect(event?.mint).toBe('Mint1');
-    expect(event?.creator).toBe('CreatorWallet111');
+    expect(event?.mint).toBe('Mint111BAGS');
+    expect(event?.creator).toBe('DevWallet333');
     expect(event?.symbol).toBe('TEST');
     expect(event?.image).toBe('https://img/test.png');
     expect(event?.twitter).toBe('https://x.com/test');
   });
 
-  it('returns null when token metadata is missing', () => {
-    expect(leaderboardItemToLaunchEvent(makeItem({ token: 'Mint1', tokenInfo: null }))).toBeNull();
+  it('drops a bags.fm self-link website but keeps a real one', () => {
+    expect(baseAssetToLaunchEvent(makeBaseAsset() as never)?.website).toBeUndefined();
+    const real = baseAssetToLaunchEvent(
+      makeBaseAsset({ website: 'https://project.xyz' }) as never
+    );
+    expect(real?.website).toBe('https://project.xyz');
+  });
+
+  it('returns null when metadata is missing', () => {
+    expect(baseAssetToLaunchEvent({ id: 'Mint111BAGS' } as never)).toBeNull();
   });
 });
 
 describe('fetchRecentLaunches', () => {
+  const hoursAgoIso = (h: number): string => new Date(Date.now() - h * 60 * 60 * 1000).toISOString();
+
   it('keeps only launches within the window, newest first', async () => {
-    const now = Date.now();
-    const hoursAgo = (h: number): string => new Date(now - h * 60 * 60 * 1000).toISOString();
-
-    const source = makeSource([
-      makeItem({ token: 'Old', createdAt: hoursAgo(20), symbol: 'OLD' }),
-      makeItem({ token: 'Recent', createdAt: hoursAgo(2), symbol: 'REC' }),
-      makeItem({ token: 'Newest', createdAt: hoursAgo(1), symbol: 'NEW' }),
-    ]);
-
-    const events = await fetchRecentLaunches(source, 12);
-
+    const pools = [
+      { id: 'p1', createdAt: hoursAgoIso(20), baseAsset: makeBaseAsset({ id: 'Old', symbol: 'OLD' }) },
+      { id: 'p2', createdAt: hoursAgoIso(2), baseAsset: makeBaseAsset({ id: 'Recent', symbol: 'REC' }) },
+      { id: 'p3', createdAt: hoursAgoIso(1), baseAsset: makeBaseAsset({ id: 'Newest', symbol: 'NEW' }) },
+    ];
+    const events = await fetchRecentLaunches(12, { fetchImpl: makeFetch(pools) });
     expect(events.map((e) => e.mint)).toEqual(['Newest', 'Recent']);
   });
 
-  it('skips items with unparseable timestamps', async () => {
-    const source = makeSource([makeItem({ token: 'Bad', createdAt: 'not-a-date' })]);
-    const events = await fetchRecentLaunches(source, 12);
+  it('requests the Bags launchpad sorted by createdAt', async () => {
+    const fetchImpl = makeFetch([]);
+    await fetchRecentLaunches(12, { fetchImpl });
+    const url = (fetchImpl as unknown as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
+    expect(url).toContain('launchpads=bags.fun');
+    expect(url).toContain('sortBy=createdAt');
+  });
+
+  it('skips pools with unparseable timestamps', async () => {
+    const pools = [{ id: 'p1', createdAt: 'not-a-date', baseAsset: makeBaseAsset() }];
+    const events = await fetchRecentLaunches(12, { fetchImpl: makeFetch(pools) });
     expect(events).toHaveLength(0);
+  });
+
+  it('throws on a non-OK response', async () => {
+    const fetchImpl = vi.fn(async () => ({
+      ok: false,
+      status: 503,
+      statusText: 'Service Unavailable',
+    })) as unknown as typeof fetch;
+    await expect(fetchRecentLaunches(12, { fetchImpl })).rejects.toThrow(/503/);
   });
 });
 

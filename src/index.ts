@@ -132,19 +132,20 @@ async function main(): Promise<void> {
     await bot.initialize();
     appLogger.info('Bot initialized and running');
 
-    // Optionally seed recently launched tokens so the bot has something to
-    // evaluate immediately instead of waiting for brand-new live launches.
+    // Optionally seed recently launched tokens (from the Jupiter data API) so
+    // the bot has something to evaluate immediately instead of waiting for
+    // brand-new live launches. Skipped for scenario mode, which uses synthetic
+    // launches and has no live market for the seeded tokens.
     const seedRecentHours = resolveSeedRecentHours(process.argv.slice(2), process.env);
     if (seedRecentHours !== null) {
-      if (bagsSDK === null) {
-        appLogger.warn(
-          'Recent-launch seeding requested but the Bags SDK is unavailable (scenario mode?); skipping',
-          { seedRecentHours }
-        );
+      if (config.launchSource.type === 'scenario') {
+        appLogger.warn('Recent-launch seeding is not supported in scenario mode; skipping', {
+          seedRecentHours,
+        });
       } else {
         appLogger.info('Seeding recently launched tokens', { withinHours: seedRecentHours });
         try {
-          const recentLaunches = await fetchRecentLaunches(bagsSDK, seedRecentHours);
+          const recentLaunches = await fetchRecentLaunches(seedRecentHours);
           const listener = bot.getRestreamListener();
           for (const event of recentLaunches) {
             listener.injectEvent(event);
