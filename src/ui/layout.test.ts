@@ -111,6 +111,10 @@ describe('createMainLayout', () => {
     expect(mainContent.id).toBe('dashboard-main');
     expect(mainContent.children).toHaveLength(2);
     expect(mainContent.children[0].id).toBe('dashboard-upper');
-    expect(mainContent.children[1].id).toBe('current-report-panel');
+
+    const lower = mainContent.children[1];
+    expect(lower.id).toBe('dashboard-lower');
+    expect(lower.children[0].id).toBe('current-report-panel');
+    expect(lower.children[1].id).toBe('positions-panel');
   });
 });

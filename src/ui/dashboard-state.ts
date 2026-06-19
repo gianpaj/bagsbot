@@ -696,6 +696,70 @@ export function getDashboardMetrics(state: DashboardState): DashboardMetrics {
   };
 }
 
+/** Per-position profit/loss snapshot. */
+export interface PositionPnl {
+  /** Current value in SOL (falls back to entry cost before a price is known). */
+  valueSol: number;
+  /** Profit/loss in SOL versus entry cost. */
+  pnlSol: number;
+  /** Profit/loss as a percentage of entry cost. */
+  pnlPercent: number;
+}
+
+/** Aggregate portfolio snapshot across all open positions. */
+export interface PortfolioSummary {
+  positions: Position[];
+  openCount: number;
+  totalEntrySol: number;
+  totalCurrentValueSol: number;
+  totalPnlSol: number;
+  totalPnlPercent: number;
+}
+
+/** All currently open positions, in the order they are tracked. */
+export function getOpenPositions(state: DashboardState): Position[] {
+  return state.trackedItems
+    .map((item) => item.position)
+    .filter((position): position is Position => position !== undefined && position.status === 'open');
+}
+
+/**
+ * Compute a position's value and profit/loss. Before the price poller has set a
+ * current price, value falls back to the entry cost so PnL reads as flat rather
+ * than as a total loss.
+ */
+export function getPositionPnl(position: Position): PositionPnl {
+  const valueSol =
+    position.currentValue ??
+    (position.currentPrice !== undefined
+      ? position.currentPrice * position.tokensHeld
+      : position.entrySol);
+  const pnlSol = valueSol - position.entrySol;
+  const pnlPercent = position.entrySol > 0 ? (pnlSol / position.entrySol) * 100 : 0;
+  return { valueSol, pnlSol, pnlPercent };
+}
+
+/** Aggregate open positions into a portfolio-level PnL summary. */
+export function getPortfolioSummary(state: DashboardState): PortfolioSummary {
+  const positions = getOpenPositions(state);
+  let totalEntrySol = 0;
+  let totalCurrentValueSol = 0;
+  for (const position of positions) {
+    totalEntrySol += position.entrySol;
+    totalCurrentValueSol += getPositionPnl(position).valueSol;
+  }
+  const totalPnlSol = totalCurrentValueSol - totalEntrySol;
+  const totalPnlPercent = totalEntrySol > 0 ? (totalPnlSol / totalEntrySol) * 100 : 0;
+  return {
+    positions,
+    openCount: positions.length,
+    totalEntrySol,
+    totalCurrentValueSol,
+    totalPnlSol,
+    totalPnlPercent,
+  };
+}
+
 export function formatTimestamp(timestamp: Date): string {
   return timestamp.toTimeString().slice(0, 8);
 }

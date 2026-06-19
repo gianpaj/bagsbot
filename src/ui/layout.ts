@@ -13,6 +13,8 @@ import {
   formatTimestamp,
   getDashboardMetrics,
   getSelectedTrackedItem,
+  getPortfolioSummary,
+  getPositionPnl,
 } from './dashboard-state.js';
 
 const Box: any = (OpenTUIRenderables as any).Box;
@@ -246,8 +248,8 @@ function createCurrentReportPanel(state: AppState): unknown {
       border: true,
       title: 'Current Report / New Analysis',
       flexDirection: 'column',
-      flexGrow: 3,
-      width: '100%',
+      flexGrow: 2,
+      flexBasis: 0,
       height: '100%',
       paddingLeft: 1,
       paddingRight: 1,
@@ -269,6 +271,78 @@ function createCurrentReportPanel(state: AppState): unknown {
         id: 'report-content',
         content: buildCurrentReport(selected),
       })
+    )
+  );
+}
+
+function formatSol(value: number): string {
+  const sign = value >= 0 ? '+' : '';
+  return `${sign}${value.toFixed(3)}`;
+}
+
+// Bottom-right pane: a live ledger of open positions and their unrealized PnL,
+// plus a portfolio total, so gains/losses are visible at a glance.
+function createPositionsPanel(state: AppState): unknown {
+  const summary = getPortfolioSummary(state.dashboard);
+
+  const summaryColor =
+    summary.totalPnlSol > 0 ? 'green' : summary.totalPnlSol < 0 ? 'red' : 'white';
+  const summaryLine = Text({
+    id: 'positions-summary',
+    fg: summaryColor,
+    content:
+      `Open: ${String(summary.openCount)} | Cost: ${summary.totalEntrySol.toFixed(3)} | ` +
+      `Value: ${summary.totalCurrentValueSol.toFixed(3)} | ` +
+      `PnL: ${formatSol(summary.totalPnlSol)} SOL (${formatSol(summary.totalPnlPercent)}%)`,
+  });
+
+  const rows =
+    summary.positions.length === 0
+      ? [
+          Text({
+            id: 'positions-empty',
+            content: 'No open positions yet.',
+          }),
+        ]
+      : summary.positions.map((position) => {
+          const { valueSol, pnlSol, pnlPercent } = getPositionPnl(position);
+          const color = pnlSol > 0 ? 'green' : pnlSol < 0 ? 'red' : 'white';
+          return Text({
+            id: `position-row-${position.id}`,
+            fg: color,
+            content:
+              `${truncate(position.tokenSymbol, 8).padEnd(8)} ` +
+              `${valueSol.toFixed(3)} SOL  ` +
+              `${formatSol(pnlSol)} (${formatSol(pnlPercent)}%)`,
+          });
+        });
+
+  return Box(
+    {
+      id: 'positions-panel',
+      border: true,
+      title: 'Positions & PnL',
+      flexDirection: 'column',
+      flexGrow: 1,
+      flexBasis: 0,
+      height: '100%',
+      paddingLeft: 1,
+      paddingRight: 1,
+      paddingTop: 0,
+      paddingBottom: 0,
+    },
+    summaryLine,
+    ScrollBox(
+      {
+        id: 'positions-scroll',
+        flexGrow: 1,
+        width: '100%',
+        scrollY: true,
+        border: false,
+        paddingTop: 1,
+        paddingBottom: 1,
+      },
+      ...rows
     )
   );
 }
@@ -331,7 +405,17 @@ export function createMainLayout(state: AppState, botConfig: BotConfig): unknown
         createProgressPanel(state),
         createMessagesPanel(state)
       ),
-      createCurrentReportPanel(state)
+      Box(
+        {
+          id: 'dashboard-lower',
+          flexDirection: 'row',
+          flexGrow: 3,
+          columnGap: 1,
+          width: '100%',
+        },
+        createCurrentReportPanel(state),
+        createPositionsPanel(state)
+      )
     ),
     createFooter(state, botConfig)
   );

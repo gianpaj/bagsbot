@@ -8,7 +8,26 @@ import {
   buildCurrentReport,
   selectNextItem,
   selectPreviousItem,
+  syncPositions,
+  getOpenPositions,
+  getPositionPnl,
+  getPortfolioSummary,
 } from './dashboard-state.js';
+import type { Position } from '../types/positions.js';
+
+function makePosition(overrides: Partial<Position> = {}): Position {
+  return {
+    id: 'pos-1',
+    mint: 'mint-1',
+    tokenSymbol: 'ONE',
+    entryPrice: 0.001,
+    tokensHeld: 1000,
+    entrySol: 1,
+    entryTimestamp: new Date(),
+    status: 'open',
+    ...overrides,
+  };
+}
 
 describe('dashboard state', () => {
   it('tracks launches and keeps the newest item selected', () => {
@@ -105,5 +124,44 @@ describe('dashboard state', () => {
     expect(report).toContain('Score: 88/100');
     expect(report).toContain('Opportunity: pending');
     expect(report).toContain('Filter Breakdown');
+  });
+
+  it('computes per-position PnL, falling back to entry cost before a price is set', () => {
+    const noPrice = makePosition({ entrySol: 1 });
+    expect(getPositionPnl(noPrice)).toEqual({ valueSol: 1, pnlSol: 0, pnlPercent: 0 });
+
+    const up = makePosition({ entrySol: 1, currentValue: 1.5 });
+    expect(getPositionPnl(up)).toEqual({ valueSol: 1.5, pnlSol: 0.5, pnlPercent: 50 });
+
+    const down = makePosition({ entrySol: 2, currentPrice: 0.0005, tokensHeld: 1000 });
+    expect(getPositionPnl(down)).toMatchObject({ valueSol: 0.5, pnlSol: -1.5, pnlPercent: -75 });
+  });
+
+  it('summarizes open positions into a portfolio PnL', () => {
+    const state = createDashboardState();
+    syncPositions(state, [
+      makePosition({ id: 'p1', mint: 'mint-1', tokenSymbol: 'ONE', entrySol: 1, currentValue: 1.5 }),
+      makePosition({ id: 'p2', mint: 'mint-2', tokenSymbol: 'TWO', entrySol: 1, currentValue: 0.5 }),
+    ]);
+
+    expect(getOpenPositions(state)).toHaveLength(2);
+
+    const summary = getPortfolioSummary(state);
+    expect(summary.openCount).toBe(2);
+    expect(summary.totalEntrySol).toBe(2);
+    expect(summary.totalCurrentValueSol).toBe(2);
+    expect(summary.totalPnlSol).toBe(0);
+    expect(summary.totalPnlPercent).toBe(0);
+  });
+
+  it('excludes closed positions from the portfolio summary', () => {
+    const state = createDashboardState();
+    syncPositions(state, [makePosition({ id: 'p1', mint: 'mint-1', currentValue: 2 })]);
+    // A subsequent sync without mint-1 marks it closed.
+    syncPositions(state, [makePosition({ id: 'p2', mint: 'mint-2', currentValue: 3 })]);
+
+    const summary = getPortfolioSummary(state);
+    expect(summary.openCount).toBe(1);
+    expect(summary.positions[0]?.mint).toBe('mint-2');
   });
 });
