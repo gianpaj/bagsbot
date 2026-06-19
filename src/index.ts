@@ -20,6 +20,8 @@ import {
   createTradeServiceAdapter,
   createLaunchSourceRuntime,
   createFilterRegistry,
+  fetchRecentLaunches,
+  resolveSeedRecentHours,
 } from './sdk/index.js';
 import { WalletManager } from './trading/wallet.js';
 import { createPaperTradeService } from './trading/paper-trade-service.js';
@@ -129,6 +131,35 @@ async function main(): Promise<void> {
     appLogger.info('Starting bot...');
     await bot.initialize();
     appLogger.info('Bot initialized and running');
+
+    // Optionally seed recently launched tokens so the bot has something to
+    // evaluate immediately instead of waiting for brand-new live launches.
+    const seedRecentHours = resolveSeedRecentHours(process.argv.slice(2), process.env);
+    if (seedRecentHours !== null) {
+      if (bagsSDK === null) {
+        appLogger.warn(
+          'Recent-launch seeding requested but the Bags SDK is unavailable (scenario mode?); skipping',
+          { seedRecentHours }
+        );
+      } else {
+        appLogger.info('Seeding recently launched tokens', { withinHours: seedRecentHours });
+        try {
+          const recentLaunches = await fetchRecentLaunches(bagsSDK, seedRecentHours);
+          const listener = bot.getRestreamListener();
+          for (const event of recentLaunches) {
+            listener.injectEvent(event);
+          }
+          appLogger.info('Seeded recently launched tokens', {
+            count: recentLaunches.length,
+            withinHours: seedRecentHours,
+          });
+        } catch (error) {
+          appLogger.error('Failed to seed recently launched tokens', {
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+      }
+    }
 
     // Log startup summary
     appLogger.info('='.repeat(50));

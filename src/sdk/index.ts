@@ -12,3 +12,10 @@ export {
 } from './restream-client.js';
 export { createFilterRegistry, type FilterServiceOverrides } from './filter-registry.js';
 export { createLaunchSourceRuntime, type LaunchSourceRuntime } from './launch-source.js';
+export {
+  fetchRecentLaunches,
+  leaderboardItemToLaunchEvent,
+  resolveSeedRecentHours,
+  DEFAULT_SEED_RECENT_HOURS,
+  type RecentLaunchesSource,
+} from './recent-launches.js';
