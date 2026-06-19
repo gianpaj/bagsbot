@@ -202,6 +202,11 @@ export class BagsBot {
           onSkipOpportunity: (opportunityId) => {
             this.handleOpportunityRejection(opportunityId);
           },
+          onManualBuy: (launch) => {
+            this.handleManualBuy(launch).catch((err) => {
+              this.logger.error('Error during manual buy', { error: err });
+            });
+          },
           onQuit: () => {
             this.shutdown().catch((err) => {
               this.logger.error('Error during shutdown', { error: err });
@@ -495,64 +500,10 @@ export class BagsBot {
       }
 
       this.alertSystem.confirm(opportunityId, amount);
-      this.uiApp?.startTradeExecution(opportunity.launch.mint, amount);
 
-      // Position limits are enforced after confirmation so the dashboard can
-      // show the exact reason a selected opportunity cannot progress to trade.
-      // Check position limits
-      const openPositions = this.positionManager.getOpenPositions();
-      if (openPositions.length >= this.config.maxOpenPositions) {
-        this.logger.warn('Max open positions reached', {
-          current: openPositions.length,
-          max: this.config.maxOpenPositions,
-        });
-        this.uiApp?.failTradeExecution(
-          opportunity.launch.mint,
-          `Max open positions reached (${this.config.maxOpenPositions})`
-        );
-        return;
-      }
-
-      // Prepare and execute trade
-      const prepared = await this.tradeExecutor.prepareSwap(opportunity.launch.mint, amount);
-      const tradeResult = await this.tradeExecutor.executeSwap(prepared);
-
-      if (!tradeResult.success) {
-        this.logger.warn('Trade execution failed', {
-          opportunityId,
-          error: tradeResult.error,
-        });
-        this.uiApp?.failTradeExecution(
-          opportunity.launch.mint,
-          tradeResult.error ?? 'Trade execution failed'
-        );
-        return;
-      }
-
-      this.logger.info('Trade executed successfully', {
-        opportunityId,
-        mint: opportunity.launch.mint,
-        signature: tradeResult.signature,
-      });
-      this.uiApp?.completeTradeExecution(opportunity.launch.mint, tradeResult);
-
-      // Add position to manager
-      // Note: We need the actual tokens received and entry SOL amount from trade result
-      const position = this.positionManager.addPosition(
-        tradeResult,
-        opportunity.launch,
-        tradeResult.executedPrice ?? 0,
-        tradeResult.tokensReceived ?? 0,
-        amount
-      );
-
-      // Start monitoring position
-      this.exitMonitor.addPosition(position);
-
-      // Update UI (if not headless)
-      if (this.uiApp !== null) {
-        this.uiApp.updatePositions(this.positionManager.getOpenPositions());
-      }
+      // Position limits, swap, and position bookkeeping are shared with manual
+      // (paper-mode) buys via executeTrade.
+      await this.executeTrade(opportunity.launch, amount);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.logger.error('Error executing trade', {
@@ -564,6 +515,101 @@ export class BagsBot {
         this.uiApp?.failTradeExecution(opportunity.launch.mint, message);
       }
       // Note: UI error display would be handled by the UI component itself
+    }
+  }
+
+  /**
+   * Execute a buy for a launch and amount: enforce position limits, swap, and
+   * open a tracked position. Shared by opportunity confirmation and manual
+   * (paper-mode) buys. May throw on swap/network errors; callers handle it.
+   *
+   * @param launch - The launch to buy
+   * @param amount - The amount to trade (in SOL)
+   */
+  private async executeTrade(launch: LaunchpadLaunchEvent, amount: number): Promise<void> {
+    this.uiApp?.startTradeExecution(launch.mint, amount);
+
+    // Position limits are enforced here so the dashboard can show the exact
+    // reason a selected item cannot progress to trade.
+    const openPositions = this.positionManager.getOpenPositions();
+    if (openPositions.length >= this.config.maxOpenPositions) {
+      this.logger.warn('Max open positions reached', {
+        current: openPositions.length,
+        max: this.config.maxOpenPositions,
+      });
+      this.uiApp?.failTradeExecution(
+        launch.mint,
+        `Max open positions reached (${this.config.maxOpenPositions})`
+      );
+      return;
+    }
+
+    // Prepare and execute trade
+    const prepared = await this.tradeExecutor.prepareSwap(launch.mint, amount);
+    const tradeResult = await this.tradeExecutor.executeSwap(prepared);
+
+    if (!tradeResult.success) {
+      this.logger.warn('Trade execution failed', {
+        mint: launch.mint,
+        error: tradeResult.error,
+      });
+      this.uiApp?.failTradeExecution(launch.mint, tradeResult.error ?? 'Trade execution failed');
+      return;
+    }
+
+    this.logger.info('Trade executed successfully', {
+      mint: launch.mint,
+      signature: tradeResult.signature,
+    });
+    this.uiApp?.completeTradeExecution(launch.mint, tradeResult);
+
+    const position = this.positionManager.addPosition(
+      tradeResult,
+      launch,
+      tradeResult.executedPrice ?? 0,
+      tradeResult.tokensReceived ?? 0,
+      amount
+    );
+    this.exitMonitor.addPosition(position);
+
+    if (this.uiApp !== null) {
+      this.uiApp.updatePositions(this.positionManager.getOpenPositions());
+    }
+  }
+
+  /**
+   * Manually buy a tracked token in paper-mainnet mode, even when it never
+   * produced a qualifying opportunity (e.g. it was filtered out). Lets the user
+   * force a paper trade on the selected item with the `b` key. No real funds are
+   * spent in paper mode.
+   *
+   * @param launch - Minimal launch metadata from the selected dashboard item
+   */
+  async handleManualBuy(launch: { mint: string; symbol: string; name: string }): Promise<void> {
+    if (this.config.launchSource.type !== 'paper-mainnet') {
+      this.logger.warn('Manual buy ignored outside paper-mainnet mode', { mint: launch.mint });
+      this.uiApp?.addSystemMessage(
+        'Manual buy is only available in paper-mainnet mode.',
+        launch.mint
+      );
+      return;
+    }
+
+    const event: LaunchpadLaunchEvent = {
+      mint: launch.mint,
+      symbol: launch.symbol,
+      name: launch.name,
+      creator: 'unknown',
+    };
+    const amount = this.calculateSuggestedAmount();
+    this.logger.info('Manual paper buy requested', { mint: launch.mint, amount });
+
+    try {
+      await this.executeTrade(event, amount);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.error('Error executing manual buy', { error: message, mint: launch.mint });
+      this.uiApp?.failTradeExecution(launch.mint, message);
     }
   }
 

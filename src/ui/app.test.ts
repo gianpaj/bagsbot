@@ -13,6 +13,8 @@ let mockRenderer: {
   destroy: ReturnType<typeof vi.fn>;
   requestRender: ReturnType<typeof vi.fn>;
   copyToClipboardOSC52: ReturnType<typeof vi.fn>;
+  setFrameCallback: ReturnType<typeof vi.fn>;
+  removeFrameCallback: ReturnType<typeof vi.fn>;
   keyInput: {
     on: ReturnType<typeof vi.fn>;
     off: ReturnType<typeof vi.fn>;
@@ -22,8 +24,12 @@ let mockRenderer: {
     add: ReturnType<typeof vi.fn>;
     remove: ReturnType<typeof vi.fn>;
     getChildren: ReturnType<typeof vi.fn>;
+    findDescendantById: ReturnType<typeof vi.fn>;
   };
 };
+
+let frameCallback: ((deltaTime: number) => Promise<void>) | undefined;
+let mockScrollBox: { scrollChildIntoView: ReturnType<typeof vi.fn> };
 
 vi.mock('@opentui/core', () => ({
   ConsolePosition: {
@@ -78,6 +84,12 @@ const mockBotConfig = {
   },
   trading: { slippageBps: 500, priorityFeeLamports: 100000, maxRetries: 3 },
   exits: { takeProfitPercent: 900, stopLossPercent: -50, checkIntervalMs: 5000, autoSellEnabled: false },
+  launchSource: {
+    type: 'paper-mainnet' as const,
+    scenarioName: 'mixed-opportunities',
+    scenarioIntervalMs: 2500,
+    disableTrading: false,
+  },
   ui: { opportunityTimeoutSec: 30, soundEnabled: true },
 };
 
@@ -93,11 +105,19 @@ describe('OpenTUIApp', () => {
         mockConsole.visible = !mockConsole.visible;
       }),
     };
+    frameCallback = undefined;
+    mockScrollBox = { scrollChildIntoView: vi.fn() };
     mockRenderer = {
       start: vi.fn(),
       destroy: vi.fn(),
       requestRender: vi.fn(),
       copyToClipboardOSC52: vi.fn(() => true),
+      setFrameCallback: vi.fn((cb: (deltaTime: number) => Promise<void>) => {
+        frameCallback = cb;
+      }),
+      removeFrameCallback: vi.fn(() => {
+        frameCallback = undefined;
+      }),
       keyInput: {
         on: vi.fn((event: string, handler: (key: { name?: string; sequence?: string; raw?: string }) => void) => {
           if (event === 'keypress') {
@@ -111,12 +131,16 @@ describe('OpenTUIApp', () => {
         add: vi.fn(),
         remove: vi.fn(),
         getChildren: vi.fn().mockReturnValue([]),
+        findDescendantById: vi.fn((id: string) =>
+          id === 'progress-scroll' ? mockScrollBox : undefined
+        ),
       },
     };
     config = {
       botConfig: mockBotConfig,
       onBuyOpportunity: vi.fn(),
       onSkipOpportunity: vi.fn(),
+      onManualBuy: vi.fn(),
       onQuit: vi.fn(),
     };
     app = new OpenTUIApp(config);
@@ -351,5 +375,51 @@ describe('OpenTUIApp', () => {
     expect(config.onBuyOpportunity).not.toHaveBeenCalled();
     expect(app.getState().dashboard.selectedItemId).toBe('mint-1');
     expect(config.onQuit).not.toHaveBeenCalled();
+  });
+
+  it('force-buys the selected token in paper mode when there is no opportunity', async () => {
+    await app.start();
+    // Tracked but never produced an opportunity (e.g. filtered out).
+    app.trackLaunch({ mint: 'mint-9', creator: 'creator-9', name: 'Filtered Token', symbol: 'FILT' });
+
+    keyHandler?.({ name: 'b', sequence: 'b', raw: 'b' });
+
+    expect(config.onManualBuy).toHaveBeenCalledWith({
+      mint: 'mint-9',
+      symbol: 'FILT',
+      name: 'Filtered Token',
+    });
+    expect(config.onBuyOpportunity).not.toHaveBeenCalled();
+  });
+
+  it('scrolls the selected progress card into view when navigating', async () => {
+    await app.start();
+    app.trackLaunch({ mint: 'mint-1', creator: 'creator-1', name: 'Token One', symbol: 'ONE' });
+    app.trackLaunch({ mint: 'mint-2', creator: 'creator-2', name: 'Token Two', symbol: 'TWO' });
+
+    // Navigate to register the frame callback that performs the scroll.
+    keyHandler?.({ name: 'j', sequence: 'j', raw: 'j' });
+    expect(mockRenderer.setFrameCallback).toHaveBeenCalled();
+    expect(frameCallback).toBeTypeOf('function');
+
+    // Geometry is only valid after layout, so the scroll runs from the frame.
+    await frameCallback?.(16);
+    expect(mockRenderer.root.findDescendantById).toHaveBeenCalledWith('progress-scroll');
+    expect(mockScrollBox.scrollChildIntoView).toHaveBeenCalledWith(
+      `progress-item-${app.getState().dashboard.selectedItemId ?? ''}`
+    );
+  });
+
+  it('stops re-attempting the scroll and unregisters after a few frames', async () => {
+    await app.start();
+    app.trackLaunch({ mint: 'mint-1', creator: 'creator-1', name: 'Token One', symbol: 'ONE' });
+    keyHandler?.({ name: 'j', sequence: 'j', raw: 'j' });
+
+    // Three attempts, then the callback removes itself.
+    await frameCallback?.(16);
+    await frameCallback?.(16);
+    await frameCallback?.(16);
+    expect(mockScrollBox.scrollChildIntoView).toHaveBeenCalledTimes(3);
+    expect(mockRenderer.removeFrameCallback).toHaveBeenCalled();
   });
 });

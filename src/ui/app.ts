@@ -37,6 +37,7 @@ import {
   selectNextItem,
   selectPreviousItem,
   getSelectedPendingOpportunity,
+  getSelectedTrackedItem,
 } from './dashboard-state.js';
 
 export type CliRenderer = any;
@@ -73,6 +74,7 @@ export interface AppConfig {
   opportunityTimeoutMs?: number;
   onBuyOpportunity?: (opportunityId: string, amount: number) => void;
   onSkipOpportunity?: (opportunityId: string) => void;
+  onManualBuy?: (launch: { mint: string; symbol: string; name: string }) => void;
   onQuit?: () => void;
 }
 
@@ -83,6 +85,10 @@ export class OpenTUIApp {
   private config: AppConfig;
   private state: AppState;
   private logger = logger.child({ module: 'app' });
+  // Scrolling the selected progress card into view must happen after layout has
+  // been measured, so it is driven from a frame callback for a few frames.
+  private scrollIntoViewFramesLeft = 0;
+  private scrollIntoViewCallback: ((deltaTime: number) => Promise<void>) | null = null;
 
   constructor(config: AppConfig) {
     this.config = config;
@@ -312,13 +318,31 @@ export class OpenTUIApp {
 
   private handleBuyOpportunity(): void {
     const opportunity = getSelectedPendingOpportunity(this.state.dashboard);
-    if (opportunity === null) {
-      addSystemMessage(this.state.dashboard, 'No pending opportunity is selected.');
-      this.updateLayout();
+    if (opportunity !== null) {
+      this.config.onBuyOpportunity?.(opportunity.id, opportunity.suggestedAmount);
       return;
     }
 
-    this.config.onBuyOpportunity?.(opportunity.id, opportunity.suggestedAmount);
+    // Paper-mainnet: allow force-buying the selected token even when it never
+    // produced a qualifying opportunity (e.g. it was filtered out). No real
+    // funds are at risk, so the `b` key always buys the selected item.
+    if (
+      this.config.botConfig.launchSource.type === 'paper-mainnet' &&
+      this.config.onManualBuy !== undefined
+    ) {
+      const selected = getSelectedTrackedItem(this.state.dashboard);
+      if (selected !== null) {
+        this.config.onManualBuy({
+          mint: selected.mint,
+          symbol: selected.symbol,
+          name: selected.name,
+        });
+        return;
+      }
+    }
+
+    addSystemMessage(this.state.dashboard, 'No pending opportunity is selected.');
+    this.updateLayout();
   }
 
   private handleSkipOpportunity(): void {
@@ -344,11 +368,60 @@ export class OpenTUIApp {
   private selectNextItem(): void {
     selectNextItem(this.state.dashboard);
     this.updateLayout();
+    this.ensureSelectedItemVisible();
   }
 
   private selectPreviousItem(): void {
     selectPreviousItem(this.state.dashboard);
     this.updateLayout();
+    this.ensureSelectedItemVisible();
+  }
+
+  /**
+   * Scroll the Progress pane so the selected item is visible.
+   *
+   * The selected card may be below the fold after navigating. Its geometry is
+   * only known once the rebuilt layout has been measured, so the scroll is
+   * applied from a frame callback and re-attempted for a few frames (the
+   * underlying scrollChildIntoView is a no-op once the card is already in view).
+   * The current selection is read live each frame so rapid navigation always
+   * targets the latest item.
+   */
+  private ensureSelectedItemVisible(): void {
+    const renderer = this.renderer;
+    if (renderer === null || typeof renderer.setFrameCallback !== 'function') {
+      return;
+    }
+
+    this.scrollIntoViewFramesLeft = 3;
+
+    if (this.scrollIntoViewCallback === null) {
+      this.scrollIntoViewCallback = (): Promise<void> => {
+        this.scrollSelectedItemIntoView();
+        this.scrollIntoViewFramesLeft -= 1;
+        if (this.scrollIntoViewFramesLeft <= 0 && this.scrollIntoViewCallback !== null) {
+          this.renderer?.removeFrameCallback(this.scrollIntoViewCallback);
+          this.scrollIntoViewCallback = null;
+        }
+        return Promise.resolve();
+      };
+      renderer.setFrameCallback(this.scrollIntoViewCallback);
+    }
+
+    renderer.requestRender();
+  }
+
+  private scrollSelectedItemIntoView(): void {
+    const root = this.rootRenderable;
+    const selectedId = this.state.dashboard.selectedItemId;
+    if (root === null || selectedId === null || typeof root.findDescendantById !== 'function') {
+      return;
+    }
+
+    const scrollBox = root.findDescendantById('progress-scroll');
+    if (scrollBox != null && typeof scrollBox.scrollChildIntoView === 'function') {
+      scrollBox.scrollChildIntoView(`progress-item-${selectedId}`);
+    }
   }
 
   private updateLayout(): void {
@@ -460,10 +533,15 @@ export class OpenTUIApp {
     this.state.isRunning = false;
 
     if (this.renderer !== null) {
+      if (this.scrollIntoViewCallback !== null && typeof this.renderer.removeFrameCallback === 'function') {
+        this.renderer.removeFrameCallback(this.scrollIntoViewCallback);
+      }
       this.renderer.destroy();
       this.renderer = null;
     }
 
+    this.scrollIntoViewCallback = null;
+    this.scrollIntoViewFramesLeft = 0;
     this.helpModal = null;
     this.rootRenderable = null;
   }
