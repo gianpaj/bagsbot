@@ -25,6 +25,7 @@ import { AlertSystem, type Opportunity } from './alerts/system.js';
 import { HeadlessCli, createHeadlessCli } from './ui/headless-cli.js';
 import { TradeExecutor } from './trading/executor.js';
 import type { IBagsTradeService } from './trading/executor.js';
+import { PaperPricePoller } from './trading/price-poller.js';
 import { WalletManager } from './trading/wallet.js';
 import { PositionManager } from './positions/manager.js';
 import { ExitMonitor } from './exits/monitor.js';
@@ -47,6 +48,11 @@ export interface BagsBotConfig {
   bagsTradeService: IBagsTradeService;
   filterRegistry: FilterRegistry;
   simulationEngine?: SimulationEngine;
+  /**
+   * Enable paper-mainnet mode: live prices via quotes, simulated fills, and
+   * automatic trade execution driven by a live price poller.
+   */
+  paperMainnet?: boolean;
 }
 
 /**
@@ -89,6 +95,8 @@ export class BagsBot {
   private positionManager: PositionManager;
   private exitMonitor: ExitMonitor;
   private simulationEngine: SimulationEngine | undefined;
+  private pricePoller: PaperPricePoller | null = null;
+  private autoTrade: boolean;
   private connection: Connection;
   private isRunning = false;
   private headless: boolean;
@@ -118,12 +126,22 @@ export class BagsBot {
     this.positionManager = new PositionManager();
     this.exitMonitor = new ExitMonitor(this.config.exits);
     this.simulationEngine = botConfig.simulationEngine;
+    this.autoTrade = botConfig.paperMainnet ?? false;
     this.tradeExecutor = new TradeExecutor(
       botConfig.bagsTradeService,
       this.walletManager,
       this.connection,
       this.config.trading
     );
+
+    // Paper-mainnet drives exits from a live price poll (the simulation engine
+    // does this for scenario mode). The two are mutually exclusive.
+    if (botConfig.paperMainnet === true) {
+      this.pricePoller = new PaperPricePoller(
+        botConfig.bagsTradeService,
+        this.config.exits.checkIntervalMs
+      );
+    }
 
     // UI will be initialized in initialize() if not in headless mode
     if (this.headless) {
@@ -244,6 +262,19 @@ export class BagsBot {
           },
         });
         this.logger.info('Simulation engine started');
+      }
+
+      if (this.pricePoller !== null) {
+        this.pricePoller.start({
+          positionManager: this.positionManager,
+          exitMonitor: this.exitMonitor,
+          onPositionsUpdated: (positions) => {
+            if (this.uiApp !== null) {
+              this.uiApp.updatePositions(positions);
+            }
+          },
+        });
+        this.logger.info('Price poller started (paper-mainnet)');
       }
 
       // Wire up event handlers
@@ -404,6 +435,25 @@ export class BagsBot {
         score,
         suggestedAmount: opportunity.suggestedAmount,
       });
+    }
+
+    // Auto-trade (paper-mainnet): confirm the opportunity immediately instead
+    // of waiting for manual input. Safe because fills are simulated.
+    if (this.autoTrade) {
+      this.logger.info('Auto-trading opportunity (paper-mainnet)', {
+        opportunityId: opportunity.id,
+        mint: event.mint,
+        amount: opportunity.suggestedAmount,
+      });
+      this.handleOpportunityConfirmation(opportunity.id, opportunity.suggestedAmount).catch(
+        (error: unknown) => {
+          const message = error instanceof Error ? error.message : String(error);
+          this.logger.error('Error auto-trading opportunity', {
+            error: message,
+            opportunityId: opportunity.id,
+          });
+        }
+      );
     }
   }
 
@@ -646,6 +696,11 @@ export class BagsBot {
       if (this.simulationEngine !== undefined) {
         this.simulationEngine.stop();
         this.logger.debug('Simulation engine stopped');
+      }
+
+      if (this.pricePoller !== null) {
+        this.pricePoller.stop();
+        this.logger.debug('Price poller stopped');
       }
 
       // Disconnect from Restream

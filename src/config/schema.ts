@@ -194,7 +194,9 @@ export const uiConfigSchema = z.object({
  * Schema for launch source configuration
  */
 export const launchSourceConfigSchema = z.object({
-  type: z.enum(['live', 'scenario']).describe('Where launch events should come from'),
+  type: z
+    .enum(['live', 'scenario', 'paper-mainnet'])
+    .describe('Where launch events should come from'),
   scenarioName: z
     .string()
     .min(1, 'Scenario name is required')

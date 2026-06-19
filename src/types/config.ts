@@ -41,8 +41,15 @@ export interface ScoringConfig {
  * Launch source selection and scenario settings
  */
 export interface LaunchSourceConfig {
-  /** Source of launch events */
-  type: 'live' | 'scenario';
+  /**
+   * Source of launch events.
+   * - `live`: real Bags restream + real on-chain execution.
+   * - `scenario`: synthetic launches driven by the market simulation engine.
+   * - `paper-mainnet`: real Bags restream and real mainnet prices (via live
+   *   quotes), but trades are filled against a simulated ledger — no signing,
+   *   no SOL spent. Trades execute automatically.
+   */
+  type: 'live' | 'scenario' | 'paper-mainnet';
   /** Scenario preset name when using scenario mode */
   scenarioName: string;
   /** Delay between injected launch events in milliseconds */

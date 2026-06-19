@@ -146,7 +146,7 @@ export function loadEnvConfig(): PartialBotConfig {
   if (launchSourceType !== undefined && launchSourceType !== '') {
     config.launchSource = {
       ...config.launchSource,
-      type: launchSourceType as 'live' | 'scenario',
+      type: launchSourceType as 'live' | 'scenario' | 'paper-mainnet',
     };
   }
 

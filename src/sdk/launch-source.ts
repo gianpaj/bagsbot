@@ -22,6 +22,12 @@ export interface LaunchSourceRuntime {
   filterServiceOverrides?: FilterServiceOverrides;
   tradeService?: IBagsTradeService;
   simulationEngine?: SimulationEngine;
+  /**
+   * When true, the live trade service should be wrapped in a paper-trading
+   * service (simulated fills) and a live price poller should drive exits.
+   * Set for the `paper-mainnet` launch source.
+   */
+  paperMainnet?: boolean;
   description: string;
 }
 
@@ -39,6 +45,17 @@ export function createLaunchSourceRuntime(config: BotConfig): LaunchSourceRuntim
       tradeService: runtime.tradeService,
       simulationEngine: runtime.simulationEngine,
       description: `scenario:${runtime.scenario.name}`,
+    };
+  }
+
+  if (config.launchSource.type === 'paper-mainnet') {
+    launchSourceLogger.info('Using paper-mainnet launch source (live restream, simulated fills)');
+    return {
+      restreamClient: createRestreamClient({
+        apiKey: config.bagsApiKey,
+      }),
+      paperMainnet: true,
+      description: 'paper-mainnet',
     };
   }
 

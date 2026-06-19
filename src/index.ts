@@ -22,6 +22,7 @@ import {
   createFilterRegistry,
 } from './sdk/index.js';
 import { WalletManager } from './trading/wallet.js';
+import { createPaperTradeService } from './trading/paper-trade-service.js';
 
 const appLogger = logger.child({ module: 'index' });
 
@@ -90,9 +91,16 @@ async function main(): Promise<void> {
       bagsSDK = createBagsSDK(config.bagsApiKey, connection);
     }
 
-    const bagsTradeService =
+    let bagsTradeService =
       launchSource.tradeService ??
       createTradeServiceAdapter(bagsSDK as BagsSDK, walletPublicKey, connection);
+
+    // Paper-mainnet: wrap the live trade service so quotes/prices are real but
+    // fills are simulated (no signing, no SOL spent).
+    if (launchSource.paperMainnet === true) {
+      bagsTradeService = createPaperTradeService(bagsTradeService);
+      appLogger.info('Paper-mainnet mode: trades will be simulated against live prices');
+    }
     appLogger.info('Trade service initialized');
 
     // Create filter registry with all filters
@@ -112,6 +120,7 @@ async function main(): Promise<void> {
       ...(launchSource.simulationEngine !== undefined
         ? { simulationEngine: launchSource.simulationEngine }
         : {}),
+      ...(launchSource.paperMainnet === true ? { paperMainnet: true } : {}),
     };
     const bot = createBagsBot(botConfig);
     appLogger.info('BagsBot instance created');
