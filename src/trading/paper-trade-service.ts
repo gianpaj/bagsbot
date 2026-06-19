@@ -16,6 +16,7 @@ import type { Connection, PublicKey, VersionedTransaction } from '@solana/web3.j
 import { randomUUID } from 'node:crypto';
 import type { IBagsTradeService, IPaperTradeService } from './executor.js';
 import type { SimulatedExecution, TradeQuote } from '../types/trading.js';
+import { fetchJupiterQuote } from '../sdk/jupiter-price.js';
 import { logger } from '../utils/logger.js';
 
 const paperTradeLogger = logger.child({ module: 'paper-trade-service' });
@@ -42,7 +43,10 @@ export class PaperTradeService implements IPaperTradeService {
   }
 
   /**
-   * Fetch a real quote from the underlying live trade service.
+   * Fetch a real quote from the underlying live trade service, falling back to
+   * the Jupiter data API when the Bags quote endpoint fails (it occasionally
+   * returns 5xx). For paper trading only a price is needed, so a Jupiter-derived
+   * quote keeps buys and position pricing working through Bags outages.
    */
   async getQuote(
     inputMint: PublicKey | string,
@@ -54,7 +58,16 @@ export class PaperTradeService implements IPaperTradeService {
     priceImpact: number;
     route: string;
   }> {
-    return this.delegate.getQuote(inputMint, outputMint, amount);
+    try {
+      return await this.delegate.getQuote(inputMint, outputMint, amount);
+    } catch (error) {
+      const mint = typeof outputMint === 'string' ? outputMint : outputMint.toBase58();
+      paperTradeLogger.warn('Bags quote failed; falling back to Jupiter data API', {
+        mint,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return fetchJupiterQuote(mint, amount);
+    }
   }
 
   /**

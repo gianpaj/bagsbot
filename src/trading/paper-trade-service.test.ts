@@ -69,4 +69,34 @@ describe('PaperTradeService', () => {
 
     expect(result).toBeNull();
   });
+
+  it('falls back to the Jupiter data API when the Bags quote fails', async () => {
+    const delegate = {
+      getQuote: vi.fn(async () => {
+        throw new Error('Request failed with status 500');
+      }),
+      prepareSwap: vi.fn(),
+      sendAndConfirmTransaction: vi.fn(),
+    } as unknown as IBagsTradeService;
+
+    const WSOL = 'So11111111111111111111111111111111111111112';
+    const fetchMock = vi.fn(async (url: string) => {
+      const query = new URL(url).searchParams.get('query') ?? '';
+      const usdPrice = query === WSOL ? 70 : 0.00005;
+      return { ok: true, status: 200, json: async () => [{ id: query, usdPrice, decimals: 9 }] };
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    try {
+      const service = new PaperTradeService(delegate);
+      const quote = await service.getQuote(WSOL, TEST_MINT, 0.01 * 1_000_000_000);
+
+      expect(delegate.getQuote as ReturnType<typeof vi.fn>).toHaveBeenCalled();
+      expect(quote.route).toBe('JUPITER/datapi');
+      // 0.01 SOL * $70 / $0.00005 = 14000 whole tokens (base units at 9 decimals).
+      expect(quote.expectedOutput).toBeCloseTo(14000 * 1e9, 0);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
 });
