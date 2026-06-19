@@ -12,6 +12,7 @@ import {
   getOpenPositions,
   getPositionPnl,
   getPortfolioSummary,
+  setMarketData,
 } from './dashboard-state.js';
 import type { Position } from '../types/positions.js';
 
@@ -152,6 +153,30 @@ describe('dashboard state', () => {
     expect(summary.totalCurrentValueSol).toBe(2);
     expect(summary.totalPnlSol).toBe(0);
     expect(summary.totalPnlPercent).toBe(0);
+  });
+
+  it('attaches a market assessment and renders it in the report', () => {
+    const state = createDashboardState();
+    trackLaunch(state, { mint: 'mint-1', creator: 'creator-1', name: 'Token One', symbol: 'ONE' });
+
+    setMarketData(state, 'mint-1', {
+      score: 80,
+      rating: 'good',
+      signals: [
+        { key: 'organic', label: 'Organic', value: 'high (90)', status: 'good' },
+        { key: 'liquidity', label: 'Liquidity', value: '$10.0k', status: 'good' },
+        { key: 'momentum', label: 'Momentum 1h', value: '2.0x, net +5', status: 'good' },
+        { key: 'distribution', label: 'Holders', value: 'top 5% / bot 0%', status: 'good' },
+        { key: 'safety', label: 'Safety', value: 'mint off, freeze off', status: 'good' },
+      ],
+    });
+
+    expect(getSelectedTrackedItem(state)?.market?.rating).toBe('good');
+
+    const report = buildCurrentReport(getSelectedTrackedItem(state));
+    expect(report).toContain('Market Signals - GOOD (80/100)');
+    expect(report).toContain('Liquidity: $10.0k');
+    expect(report).toContain('Momentum 1h: 2.0x, net +5');
   });
 
   it('excludes closed positions from the portfolio summary', () => {

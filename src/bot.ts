@@ -27,6 +27,7 @@ import { TradeExecutor } from './trading/executor.js';
 import type { IBagsTradeService } from './trading/executor.js';
 import { PaperPricePoller } from './trading/price-poller.js';
 import { WalletManager } from './trading/wallet.js';
+import { fetchMarketData, assessMarket } from './sdk/jupiter-market.js';
 import { PositionManager } from './positions/manager.js';
 import { ExitMonitor } from './exits/monitor.js';
 import type { BotConfig } from './types/config.js';
@@ -372,6 +373,9 @@ export class BagsBot {
     // Publish a staged, agent-centric view of the launch before and after the
     // real filter pipeline runs so the dashboard can stream intermediate work.
     this.uiApp?.trackLaunch(event);
+    // Fetch live market signals (Jupiter data API) in the background so the
+    // dashboard can show an opportunity assessment without blocking the pipeline.
+    this.publishMarketData(event);
     this.uiApp?.startAgentWork(event.mint, 'Creator Analyst', 'evaluating creator signal');
     this.uiApp?.startAgentWork(event.mint, 'Technical Analyst', 'evaluating technical signal');
     this.uiApp?.startAgentWork(event.mint, 'Social Analyst', 'evaluating social signal');
@@ -702,6 +706,36 @@ export class BagsBot {
       });
       return 0.1; // Default 0.1 SOL
     }
+  }
+
+  /**
+   * Fetch and publish Jupiter market signals for a launch to the dashboard.
+   *
+   * Fire-and-forget: failures are logged but never block the launch pipeline,
+   * and only the dashboard consumes the result.
+   */
+  private publishMarketData(event: LaunchpadLaunchEvent): void {
+    if (this.uiApp === null) {
+      return;
+    }
+    fetchMarketData(event.mint)
+      .then((data) => {
+        if (data === null) {
+          return;
+        }
+        const assessment = assessMarket(data);
+        this.uiApp?.setMarketData(event.mint, assessment, {
+          mint: event.mint,
+          symbol: event.symbol,
+          name: event.name,
+        });
+      })
+      .catch((error: unknown) => {
+        this.logger.debug('Failed to fetch market data', {
+          mint: event.mint,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      });
   }
 
   private isTradingDisabledForLaunchSource(): boolean {

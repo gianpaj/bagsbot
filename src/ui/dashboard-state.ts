@@ -5,6 +5,7 @@ import type { LaunchpadLaunchEvent } from '../types/launch.js';
 import type { Position, ExitSignal } from '../types/positions.js';
 import type { TradeResult } from '../types/trading.js';
 import type { ConfidenceLevel } from '../scoring/engine.js';
+import type { MarketAssessment } from '../sdk/jupiter-market.js';
 
 export type DashboardAgentName =
   | 'Launch Listener'
@@ -54,6 +55,7 @@ export interface DashboardTrackedItem {
   score?: number;
   confidence?: ConfidenceLevel;
   filterResult?: FilterPipelineResult;
+  market?: MarketAssessment;
   opportunity?: DashboardOpportunityState;
   position?: Position;
   agentStatuses: Record<DashboardAgentName, DashboardAgentStatus>;
@@ -283,6 +285,13 @@ export function cloneDashboardState(state: DashboardState): DashboardState {
         };
       }
 
+      if (item.market !== undefined) {
+        clonedItem.market = {
+          ...item.market,
+          signals: item.market.signals.map((signal) => ({ ...signal })),
+        };
+      }
+
       return clonedItem;
     }),
     events: state.events.map((event) => ({
@@ -443,6 +452,32 @@ export function applyFilterResult(
   );
   sortTrackedItems(state);
   ensureSelection(state);
+}
+
+/**
+ * Attach a Jupiter market assessment to a tracked item and note its rating.
+ */
+export function setMarketData(
+  state: DashboardState,
+  itemId: string,
+  market: MarketAssessment,
+  meta?: { mint: string; symbol: string; name: string }
+): void {
+  const item = getOrCreateItem(
+    state,
+    itemId,
+    meta !== undefined
+      ? { mint: meta.mint, creator: 'unknown', name: meta.name, symbol: meta.symbol }
+      : undefined
+  );
+  item.market = market;
+  appendUnique(
+    item.notes,
+    `Market: ${market.rating.toUpperCase()} (${String(market.score)}/100) - ` +
+      market.signals.map((signal) => `${signal.label} ${signal.value}`).join(', '),
+    MAX_NOTES
+  );
+  pushEvent(state, item.id, 'System', `Market assessed: ${market.rating} (${String(market.score)}/100)`);
 }
 
 export function markOpportunityCreated(
@@ -818,6 +853,15 @@ export function buildCurrentReport(item: DashboardTrackedItem | null): string {
     lines.push(
       `Liquidity: ${item.filterResult.filters.liquidity.score}/100 - ${item.filterResult.filters.liquidity.details}`
     );
+  }
+
+  if (item.market !== undefined) {
+    lines.push('');
+    lines.push(`Market Signals - ${item.market.rating.toUpperCase()} (${item.market.score}/100)`);
+    item.market.signals.forEach((signal) => {
+      const marker = signal.status === 'good' ? '+' : signal.status === 'bad' ? '!' : '~';
+      lines.push(`${marker} ${signal.label}: ${signal.value}`);
+    });
   }
 
   if (item.position !== undefined) {

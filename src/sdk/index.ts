@@ -19,3 +19,12 @@ export {
   DEFAULT_SEED_RECENT_HOURS,
   type FetchRecentLaunchesOptions,
 } from './recent-launches.js';
+export {
+  fetchMarketData,
+  assessMarket,
+  type MarketData,
+  type MarketAssessment,
+  type MarketSignal,
+  type SignalStatus,
+  type MarketRating,
+} from './jupiter-market.js';

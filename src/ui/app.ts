@@ -11,6 +11,7 @@ import type { ExitSignal } from '../types/positions.js';
 import type { TradeResult } from '../types/trading.js';
 import type { ConnectionStatus } from '../listeners/restream.js';
 import type { ConfidenceLevel } from '../scoring/engine.js';
+import type { MarketAssessment } from '../sdk/jupiter-market.js';
 import { logger } from '../utils/logger.js';
 import { createMainLayout } from './layout.js';
 import {
@@ -21,6 +22,7 @@ import {
   updateConnectionState,
   setWalletBalance,
   trackLaunch,
+  setMarketData,
   startAgentWork as startDashboardAgentWork,
   completeAgentWork as completeDashboardAgentWork,
   skipAgentWork as skipDashboardAgentWork,
@@ -484,6 +486,15 @@ export class OpenTUIApp {
 
   showOpportunity(opportunity: Opportunity): void {
     markOpportunityCreated(this.state.dashboard, opportunity);
+    this.updateLayout();
+  }
+
+  setMarketData(
+    itemId: string,
+    market: MarketAssessment,
+    meta?: { mint: string; symbol: string; name: string }
+  ): void {
+    setMarketData(this.state.dashboard, itemId, market, meta);
     this.updateLayout();
   }
 

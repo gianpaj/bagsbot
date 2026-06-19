@@ -4,6 +4,7 @@
 
 import * as OpenTUIRenderables from '@opentui/core';
 import type { BotConfig } from '../types/index.js';
+import type { SignalStatus, MarketRating } from '../sdk/jupiter-market.js';
 import type { AppState } from './app.js';
 import {
   type DashboardTrackedItem,
@@ -70,6 +71,30 @@ function createHeader(state: AppState): unknown {
   );
 }
 
+function signalColor(status: SignalStatus): string {
+  switch (status) {
+    case 'good':
+      return 'green';
+    case 'warn':
+      return 'yellow';
+    case 'bad':
+      return 'red';
+    default:
+      return 'gray';
+  }
+}
+
+function ratingColor(rating: MarketRating): string {
+  switch (rating) {
+    case 'good':
+      return 'green';
+    case 'caution':
+      return 'yellow';
+    default:
+      return 'red';
+  }
+}
+
 // Progress cards are intentionally compact for non-selected items so the left pane
 // can show more tracked coins while still expanding the active one.
 function createProgressCard(item: DashboardTrackedItem, isSelected: boolean): unknown {
@@ -95,6 +120,30 @@ function createProgressCard(item: DashboardTrackedItem, isSelected: boolean): un
       })
     );
   });
+
+  // Market signals (Jupiter data API): a colored rating for every card, plus
+  // the five individual indicators on the expanded (selected) card.
+  if (item.market !== undefined) {
+    lines.push(
+      Text({
+        id: `${item.id}-market-rating`,
+        fg: ratingColor(item.market.rating),
+        content: `Market: ${item.market.rating.toUpperCase()} (${String(item.market.score)}/100)`,
+      })
+    );
+    if (isSelected) {
+      item.market.signals.forEach((signal) => {
+        const marker = signal.status === 'good' ? '+' : signal.status === 'bad' ? '!' : '~';
+        lines.push(
+          Text({
+            id: `${item.id}-market-${signal.key}`,
+            fg: signalColor(signal.status),
+            content: `  ${marker} ${signal.label}: ${signal.value}`,
+          })
+        );
+      });
+    }
+  }
 
   if (!isSelected) {
     lines.push(
