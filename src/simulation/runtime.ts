@@ -34,27 +34,27 @@ class SimulationStateService implements IStateService {
   constructor(launches: SimulationLaunchDefinition[]) {
     for (const launch of launches) {
       const username = launch.creator.twitterUsername;
-      if (username !== undefined && launch.creator.twitterVerified) {
+      if (username !== undefined && launch.creator.twitterVerified === true) {
         this.usernameToCreator.set(username, launch.launch.creator);
       }
     }
   }
 
-  async getLaunchWalletForTwitterUsername(
-    twitterUsername: string
-  ): Promise<{ toString(): string }> {
+  getLaunchWalletForTwitterUsername(twitterUsername: string): Promise<{ toString(): string }> {
     const creator = this.usernameToCreator.get(twitterUsername);
     if (creator === undefined) {
-      throw new Error(`Twitter account ${twitterUsername} is not verified in this simulation`);
+      return Promise.reject(
+        new Error(`Twitter account ${twitterUsername} is not verified in this simulation`)
+      );
     }
-    return { toString: (): string => creator };
+    return Promise.resolve({ toString: (): string => creator });
   }
 
-  async getLaunchWalletV2(): Promise<{ wallet: null; platformData: null }> {
-    return { wallet: null, platformData: null };
+  getLaunchWalletV2(): Promise<{ wallet: null; platformData: null }> {
+    return Promise.resolve({ wallet: null, platformData: null });
   }
 
-  async getTokenCreators(): Promise<
+  getTokenCreators(): Promise<
     {
       username: string;
       wallet: string;
@@ -62,7 +62,7 @@ class SimulationStateService implements IStateService {
       provider: string | null;
     }[]
   > {
-    return [];
+    return Promise.resolve([]);
   }
 }
 
@@ -84,18 +84,12 @@ class SimulationExternalApiService implements IExternalApiService {
     }
   }
 
-  async getFollowerCount(
-    _provider: 'twitter' | 'tiktok',
-    username: string
-  ): Promise<number | null> {
-    return this.profiles.get(username)?.followerCount ?? null;
+  getFollowerCount(_provider: 'twitter' | 'tiktok', username: string): Promise<number | null> {
+    return Promise.resolve(this.profiles.get(username)?.followerCount ?? null);
   }
 
-  async getAccountAgeDays(
-    _provider: 'twitter' | 'tiktok',
-    username: string
-  ): Promise<number | null> {
-    return this.profiles.get(username)?.accountAgeDays ?? null;
+  getAccountAgeDays(_provider: 'twitter' | 'tiktok', username: string): Promise<number | null> {
+    return Promise.resolve(this.profiles.get(username)?.accountAgeDays ?? null);
   }
 }
 
@@ -116,12 +110,12 @@ class SimulationLaunchHistoryService implements ILaunchHistoryService {
     }
   }
 
-  async getCreatorLaunches(creatorWallet: string): Promise<string[]> {
-    return this.creatorLaunches.get(creatorWallet) ?? [];
+  getCreatorLaunches(creatorWallet: string): Promise<string[]> {
+    return Promise.resolve(this.creatorLaunches.get(creatorWallet) ?? []);
   }
 
-  async isTokenRugged(tokenMint: string): Promise<boolean> {
-    return this.ruggedLaunches.get(tokenMint) ?? false;
+  isTokenRugged(tokenMint: string): Promise<boolean> {
+    return Promise.resolve(this.ruggedLaunches.get(tokenMint) ?? false);
   }
 }
 
@@ -140,26 +134,23 @@ class SimulationSocialApiService implements ISocialApiService {
     }
   }
 
-  async isTokenMentionedOnTwitter(tokenSymbol: string): Promise<boolean | null> {
-    return this.socialBySymbol.get(tokenSymbol)?.twitterMentioned ?? null;
+  isTokenMentionedOnTwitter(tokenSymbol: string): Promise<boolean | null> {
+    return Promise.resolve(this.socialBySymbol.get(tokenSymbol)?.twitterMentioned ?? null);
   }
 
-  async isTelegramGroupActive(telegramUrl: string): Promise<boolean | null> {
-    return this.socialByTelegram.get(telegramUrl)?.telegramActive ?? null;
+  isTelegramGroupActive(telegramUrl: string): Promise<boolean | null> {
+    return Promise.resolve(this.socialByTelegram.get(telegramUrl)?.telegramActive ?? null);
   }
 
-  async getCreatorEngagement(
+  getCreatorEngagement(
     creatorWallet: string,
     _twitterUsername: string | null
   ): Promise<number | null> {
-    return this.socialByCreator.get(creatorWallet)?.creatorEngagement ?? null;
+    return Promise.resolve(this.socialByCreator.get(creatorWallet)?.creatorEngagement ?? null);
   }
 
-  async getCommunitySize(
-    telegramUrl: string,
-    _twitterUsername: string | null
-  ): Promise<number | null> {
-    return this.socialByTelegram.get(telegramUrl)?.communitySize ?? null;
+  getCommunitySize(telegramUrl: string, _twitterUsername: string | null): Promise<number | null> {
+    return Promise.resolve(this.socialByTelegram.get(telegramUrl)?.communitySize ?? null);
   }
 }
 
@@ -172,8 +163,8 @@ class SimulationLiquidityDataService implements ILiquidityDataService {
     }
   }
 
-  async getLiquidityData(mint: string): Promise<LiquidityData> {
-    return this.liquidityByMint.get(mint) ?? {};
+  getLiquidityData(mint: string): Promise<LiquidityData> {
+    return Promise.resolve(this.liquidityByMint.get(mint) ?? {});
   }
 }
 
@@ -189,17 +180,19 @@ class SimulationRestreamClient implements IRestreamClient {
     this.simulationEngine = simulationEngine;
   }
 
-  async connect(): Promise<void> {
+  connect(): Promise<void> {
     this.connected = true;
     this.scheduleLaunches();
+    return Promise.resolve();
   }
 
-  async disconnect(): Promise<void> {
+  disconnect(): Promise<void> {
     this.connected = false;
     for (const timer of this.timers) {
       clearTimeout(timer);
     }
     this.timers = [];
+    return Promise.resolve();
   }
 
   subscribeBagsLaunches(handler: RestreamLaunchpadLaunchSubscriptionHandler): () => void {

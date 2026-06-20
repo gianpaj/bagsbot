@@ -35,6 +35,12 @@ export default tseslint.config(
   {
     files: ["**/*.test.ts", "**/*.spec.ts"],
     rules: {
+      // Tests legitimately reach into private members via bracket notation;
+      // dot notation would be a TypeScript privacy error, so allow it here.
+      "@typescript-eslint/dot-notation": [
+        "error",
+        { allowPrivateClassPropertyAccess: true, allowProtectedClassPropertyAccess: true },
+      ],
       "@typescript-eslint/no-unsafe-assignment": "off",
       "@typescript-eslint/no-unsafe-member-access": "off",
       "@typescript-eslint/no-unsafe-call": "off",

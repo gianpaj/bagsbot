@@ -25,6 +25,7 @@ import {
 } from './sdk/index.js';
 import { WalletManager } from './trading/wallet.js';
 import { createPaperTradeService } from './trading/paper-trade-service.js';
+import type { IBagsTradeService } from './trading/executor.js';
 
 const appLogger = logger.child({ module: 'index' });
 
@@ -85,17 +86,21 @@ async function main(): Promise<void> {
     });
 
     let bagsSDK: BagsSDK | null = null;
+    let bagsTradeService: IBagsTradeService;
     if (
-      launchSource.tradeService === undefined ||
-      launchSource.filterServiceOverrides === undefined
+      launchSource.tradeService !== undefined &&
+      launchSource.filterServiceOverrides !== undefined
     ) {
+      // The launch source supplies its own trade service and filter overrides
+      // (e.g. simulation/scenario), so no live Bags SDK is required.
+      bagsTradeService = launchSource.tradeService;
+    } else {
       appLogger.info('Initializing Bags SDK...');
       bagsSDK = createBagsSDK(config.bagsApiKey, connection);
+      bagsTradeService =
+        launchSource.tradeService ??
+        createTradeServiceAdapter(bagsSDK, walletPublicKey, connection);
     }
-
-    let bagsTradeService =
-      launchSource.tradeService ??
-      createTradeServiceAdapter(bagsSDK as BagsSDK, walletPublicKey, connection);
 
     // Paper-mainnet: wrap the live trade service so quotes/prices are real but
     // fills are simulated (no signing, no SOL spent).

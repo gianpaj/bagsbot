@@ -224,8 +224,8 @@ export class OpenTUIApp {
       return;
     }
 
-    this.renderer.console.onCopySelection = (text: string) => {
-      const success = this.renderer?.copyToClipboardOSC52(text) ?? false;
+    this.renderer.console.onCopySelection = (text: string): void => {
+      const success: boolean = this.renderer?.copyToClipboardOSC52(text) ?? false;
       if (!success) {
         this.logger.warn('Clipboard copy failed for console selection');
       }

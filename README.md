@@ -416,7 +416,12 @@ The terminal UI is now store-driven rather than screen-driven:
 
 | Module | Path | Purpose |
 |--------|------|---------|
-| Restream Listener | `src/listeners/restream.ts` | Connects to Bags Restream API |
+| Launch Source | `src/sdk/launch-source.ts` | Selects live / paper-mainnet / scenario launch streams |
+| Restream Client | `src/sdk/restream-client.ts` | Live Bags Restream WebSocket client |
+| SDK Adapter | `src/sdk/adapter.ts` | Wraps the Bags SDK as a quote/trade service |
+| Jupiter Fallbacks | `src/sdk/jupiter-price.ts`, `src/sdk/jupiter-market.ts` | Quote/price/market fallbacks when Bags endpoints fail |
+| Filter Registry | `src/sdk/filter-registry.ts` | Wires filter data services (live or simulated) |
+| Restream Listener | `src/listeners/restream.ts` | Restream client interface used by the bot |
 | Filter Pipeline | `src/filters/pipeline.ts` | Orchestrates filter evaluation |
 | Creator Filter | `src/filters/creator.ts` | Validates creator credentials |
 | Technical Filter | `src/filters/technical.ts` | Checks metadata quality |
@@ -431,6 +436,48 @@ The terminal UI is now store-driven rather than screen-driven:
 | OpenTUI App | `src/ui/app.ts` | Dashboard runtime and keyboard bridge |
 | Dashboard State | `src/ui/dashboard-state.ts` | Event-driven UI store for tracked items and reports |
 | Dashboard Layout | `src/ui/layout.ts` | TradingAgents-style three-pane renderer |
+
+### Data Flow
+
+The end-to-end path for a single launch:
+
+```text
+launch event (sdk/restream or scenario/simulation source)
+      -> filter pipeline (creator, technical, social, liquidity)
+      -> scoring engine (weighted 0-100 score + confidence)
+      -> alert system (opportunity created when score >= threshold)
+      -> trade decision (manual confirm, or simulated fill)
+      -> position manager + exit monitor (TP/SL)
+      -> UI dashboard state + layout
+```
+
+`src/index.ts` is the live/paper/scenario entry point; it builds the launch
+source, trade service, and filter registry, then constructs the bot in
+`src/bot.ts`, which owns the runtime wiring. `src/simulate.ts` and
+`src/simulate-history.ts` are the standalone simulation entry points.
+
+### Run Modes
+
+The active source is chosen by `LAUNCH_SOURCE` (see `src/sdk/launch-source.ts`),
+except the simulation harness, which runs from its own entry points:
+
+| Mode | How to run | Description |
+|------|------------|-------------|
+| `live` | `bun start` / `bun run dev` | Real Bags Restream launches, real quotes, real on-chain trades |
+| `paper-mainnet` | `bun run dev:paper` | Live restream + real quotes, but fills are simulated (no signing, no SOL spent) |
+| `scenario` | `bun run dev:scenario` | Synthetic launches from `src/testing/`, trading disabled by default |
+| `simulate` | `bun run simulate` / `bun run simulate:history` | Deterministic/interactive paper-trading harness (`src/simulation/`) with injected launches and simulated prices |
+
+### Configuration
+
+Configuration is layered (later sources override earlier ones):
+
+1. Built-in defaults (`src/config/defaults.ts`)
+2. `~/.bagsbot/config.json` if present (`CONFIG_FILE_PATH` in `src/config/loader.ts`)
+3. Environment variables (`.env`), including `BAGS_API_KEY`, `SOLANA_RPC_URL`,
+   `WALLET_PATH`, `UI_HEADLESS`, and `LAUNCH_SOURCE`
+
+See the [Configuration](#configuration) section for the full schema.
 
 ## Development
 

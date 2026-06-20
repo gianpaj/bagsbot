@@ -14,7 +14,7 @@ export class SimulationTradeService implements IPaperTradeService {
     this.engine = engine;
   }
 
-  async getQuote(
+  getQuote(
     _inputMint: PublicKey | string,
     outputMint: PublicKey | string,
     amount: number
@@ -25,7 +25,12 @@ export class SimulationTradeService implements IPaperTradeService {
     route: string;
   }> {
     const mint = typeof outputMint === 'string' ? outputMint : outputMint.toBase58();
-    const currentPrice = this.requireCurrentPrice(mint);
+    let currentPrice: number;
+    try {
+      currentPrice = this.requireCurrentPrice(mint);
+    } catch (error) {
+      return Promise.reject(error instanceof Error ? error : new Error(String(error)));
+    }
     const amountSol = amount / 1_000_000_000;
     const priceImpact = 0.01;
     const expectedOutput = amountSol / currentPrice;
@@ -37,19 +42,19 @@ export class SimulationTradeService implements IPaperTradeService {
       expectedOutput,
     });
 
-    return {
+    return Promise.resolve({
       inputAmount: amount,
       expectedOutput,
       priceImpact,
       route: `SIMULATED/${this.engine.getLaunch(mint)?.kind ?? 'generated'}`,
-    };
+    });
   }
 
-  async prepareSwap(): Promise<VersionedTransaction> {
-    return {} as VersionedTransaction;
+  prepareSwap(): Promise<VersionedTransaction> {
+    return Promise.resolve({} as VersionedTransaction);
   }
 
-  async prepareSimulatedExecution(
+  prepareSimulatedExecution(
     _inputMint: PublicKey | string,
     outputMint: PublicKey | string,
     amount: number,
@@ -62,25 +67,30 @@ export class SimulationTradeService implements IPaperTradeService {
     tokensReceived: number;
   }> {
     const mint = typeof outputMint === 'string' ? outputMint : outputMint.toBase58();
-    const currentPrice = this.requireCurrentPrice(mint);
+    let currentPrice: number;
+    try {
+      currentPrice = this.requireCurrentPrice(mint);
+    } catch (error) {
+      return Promise.reject(error instanceof Error ? error : new Error(String(error)));
+    }
     const slippageFraction = slippageBps / 10_000;
     const executionSlip = Math.min(slippageFraction / 4, 0.02);
     const executedPrice = currentPrice * (1 + executionSlip);
     const amountSol = amount / 1_000_000_000;
     const tokensReceived = amountSol / executedPrice;
 
-    return {
+    return Promise.resolve({
       signature: `SIM-${randomUUID()}`,
       executedPrice,
       tokensReceived: Math.min(tokensReceived, quote.expectedOutput),
-    };
+    });
   }
 
-  async sendAndConfirmTransaction(
+  sendAndConfirmTransaction(
     _transaction: VersionedTransaction,
     _connection: Connection
   ): Promise<string> {
-    return `SIM-${randomUUID()}`;
+    return Promise.resolve(`SIM-${randomUUID()}`);
   }
 
   private requireCurrentPrice(mint: string): number {

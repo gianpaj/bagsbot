@@ -195,21 +195,21 @@ export class BagsBot {
         this.uiApp = new OpenTUIApp({
           botConfig: this.config,
           opportunityTimeoutMs: this.config.ui.opportunityTimeoutSec * 1000,
-          onBuyOpportunity: (opportunityId, amount) => {
-            this.handleOpportunityConfirmation(opportunityId, amount).catch((err) => {
+          onBuyOpportunity: (opportunityId, amount): void => {
+            this.handleOpportunityConfirmation(opportunityId, amount).catch((err: unknown) => {
               this.logger.error('Error confirming opportunity', { error: err });
             });
           },
-          onSkipOpportunity: (opportunityId) => {
+          onSkipOpportunity: (opportunityId): void => {
             this.handleOpportunityRejection(opportunityId);
           },
-          onManualBuy: (launch) => {
-            this.handleManualBuy(launch).catch((err) => {
+          onManualBuy: (launch): void => {
+            this.handleManualBuy(launch).catch((err: unknown) => {
               this.logger.error('Error during manual buy', { error: err });
             });
           },
-          onQuit: () => {
-            this.shutdown().catch((err) => {
+          onQuit: (): void => {
+            this.shutdown().catch((err: unknown) => {
               this.logger.error('Error during shutdown', { error: err });
               process.exit(1);
             });
@@ -229,7 +229,7 @@ export class BagsBot {
         // Start headless CLI for keyboard interaction
         this.headlessCli = createHeadlessCli({
           onBuy: (opportunityId, amount) => {
-            this.handleOpportunityConfirmation(opportunityId, amount).catch((err) => {
+            this.handleOpportunityConfirmation(opportunityId, amount).catch((err: unknown) => {
               this.logger.error('Error confirming opportunity', { error: err });
             });
           },
@@ -243,7 +243,7 @@ export class BagsBot {
             this.handleOpportunityRejection(opportunityId);
           },
           onQuit: () => {
-            this.shutdown().catch((err) => {
+            this.shutdown().catch((err: unknown) => {
               this.logger.error('Error during shutdown', { error: err });
               process.exit(1);
             });
@@ -543,7 +543,7 @@ export class BagsBot {
       });
       this.uiApp?.failTradeExecution(
         launch.mint,
-        `Max open positions reached (${this.config.maxOpenPositions})`
+        `Max open positions reached (${String(this.config.maxOpenPositions)})`
       );
       return;
     }

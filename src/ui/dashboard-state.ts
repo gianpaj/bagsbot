@@ -242,7 +242,7 @@ function pushEvent(
   content: string
 ): void {
   state.events.unshift({
-    id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    id: `${String(Date.now())}-${Math.random().toString(16).slice(2)}`,
     itemId,
     type,
     timestamp: new Date(),
@@ -454,7 +454,7 @@ export function applyFilterResult(
   item.confidence = confidence;
   item.stage = filterResult.passed ? 'analysis completed' : 'screened out';
 
-  const filterMap: Array<[DashboardAgentName, keyof FilterPipelineResult['filters'], string]> = [
+  const filterMap: [DashboardAgentName, keyof FilterPipelineResult['filters'], string][] = [
     ['Creator Analyst', 'creator', 'creator'],
     ['Technical Analyst', 'technical', 'technical'],
     ['Social Analyst', 'social', 'social'],
@@ -467,28 +467,28 @@ export function applyFilterResult(
     setAgentStatus(item, agent, 'completed');
     appendUnique(
       item.notes,
-      `${agent}: ${label} score ${result.score}/100. ${result.details}`,
+      `${agent}: ${label} score ${String(result.score)}/100. ${result.details}`,
       MAX_NOTES
     );
     pushEvent(
       state,
       item.id,
       'Reasoning',
-      `${agent}: ${verb}. ${label} score ${result.score}/100`
+      `${agent}: ${verb}. ${label} score ${String(result.score)}/100`
     );
   });
 
   setAgentStatus(item, 'Scoring Agent', 'completed');
   appendUnique(
     item.notes,
-    `Scoring Agent: total score ${filterResult.totalScore}/100 (${confidence}).`,
+    `Scoring Agent: total score ${String(filterResult.totalScore)}/100 (${confidence}).`,
     MAX_NOTES
   );
   pushEvent(
     state,
     item.id,
     'Reasoning',
-    `Scoring Agent: total score ${filterResult.totalScore}/100 (${confidence})`
+    `Scoring Agent: total score ${String(filterResult.totalScore)}/100 (${confidence})`
   );
   sortTrackedItems(state);
   ensureSelection(state);
@@ -626,14 +626,22 @@ export function completeTradeExecution(
   item.stage = 'trade completed';
   appendUnique(
     item.notes,
-    `Trader: swap executed${tradeResult.signature ? ` (${tradeResult.signature})` : ''}.`,
+    `Trader: swap executed${
+      tradeResult.signature !== undefined && tradeResult.signature !== ''
+        ? ` (${tradeResult.signature})`
+        : ''
+    }.`,
     MAX_NOTES
   );
   pushEvent(
     state,
     item.id,
     'Tool',
-    `Trader: trade executed${tradeResult.signature ? ` (${tradeResult.signature})` : ''}`
+    `Trader: trade executed${
+      tradeResult.signature !== undefined && tradeResult.signature !== ''
+        ? ` (${tradeResult.signature})`
+        : ''
+    }`
   );
   sortTrackedItems(state);
   ensureSelection(state);
@@ -670,7 +678,7 @@ export function syncPositions(state: DashboardState, positions: Position[]): voi
   });
 
   state.trackedItems.forEach((item) => {
-    if (!openMints.has(item.mint) && item.position !== undefined && item.position.status === 'open') {
+    if (!openMints.has(item.mint) && item.position?.status === 'open') {
       item.position = {
         ...item.position,
         status: 'closed',
@@ -694,7 +702,7 @@ export function recordExitSignal(state: DashboardState, signal: ExitSignal): voi
   item.stage = `${signal.type.replace('_', ' ')} triggered`;
   appendUnique(
     item.notes,
-    `Position Monitor: ${signal.type.replace('_', ' ')} triggered at ${signal.currentPrice}.`,
+    `Position Monitor: ${signal.type.replace('_', ' ')} triggered at ${String(signal.currentPrice)}.`,
     MAX_NOTES
   );
   pushEvent(
@@ -795,7 +803,7 @@ export interface PortfolioSummary {
 export function getOpenPositions(state: DashboardState): Position[] {
   return state.trackedItems
     .map((item) => item.position)
-    .filter((position): position is Position => position !== undefined && position.status === 'open');
+    .filter((position): position is Position => position?.status === 'open');
 }
 
 /**
@@ -862,7 +870,7 @@ export function buildCurrentReport(item: DashboardTrackedItem | null): string {
   ];
 
   if (item.score !== undefined) {
-    lines.push(`Score: ${item.score}/100`);
+    lines.push(`Score: ${String(item.score)}/100`);
   }
 
   if (item.confidence !== undefined) {
@@ -882,22 +890,22 @@ export function buildCurrentReport(item: DashboardTrackedItem | null): string {
     lines.push('');
     lines.push('Filter Breakdown');
     lines.push(
-      `Creator: ${item.filterResult.filters.creator.score}/100 - ${item.filterResult.filters.creator.details}`
+      `Creator: ${String(item.filterResult.filters.creator.score)}/100 - ${item.filterResult.filters.creator.details}`
     );
     lines.push(
-      `Technical: ${item.filterResult.filters.technical.score}/100 - ${item.filterResult.filters.technical.details}`
+      `Technical: ${String(item.filterResult.filters.technical.score)}/100 - ${item.filterResult.filters.technical.details}`
     );
     lines.push(
-      `Social: ${item.filterResult.filters.social.score}/100 - ${item.filterResult.filters.social.details}`
+      `Social: ${String(item.filterResult.filters.social.score)}/100 - ${item.filterResult.filters.social.details}`
     );
     lines.push(
-      `Liquidity: ${item.filterResult.filters.liquidity.score}/100 - ${item.filterResult.filters.liquidity.details}`
+      `Liquidity: ${String(item.filterResult.filters.liquidity.score)}/100 - ${item.filterResult.filters.liquidity.details}`
     );
   }
 
   if (item.market !== undefined) {
     lines.push('');
-    lines.push(`Market Signals - ${item.market.rating.toUpperCase()} (${item.market.score}/100)`);
+    lines.push(`Market Signals - ${item.market.rating.toUpperCase()} (${String(item.market.score)}/100)`);
     item.market.signals.forEach((signal) => {
       const marker = signal.status === 'good' ? '+' : signal.status === 'bad' ? '!' : '~';
       lines.push(`${marker} ${signal.label}: ${signal.value}`);

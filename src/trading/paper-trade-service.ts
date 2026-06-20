@@ -74,8 +74,8 @@ export class PaperTradeService implements IPaperTradeService {
    * No transaction is built for paper trades. The executor ignores this result
    * once {@link prepareSimulatedExecution} returns a fill.
    */
-  async prepareSwap(): Promise<VersionedTransaction> {
-    return {} as VersionedTransaction;
+  prepareSwap(): Promise<VersionedTransaction> {
+    return Promise.resolve({} as VersionedTransaction);
   }
 
   /**
@@ -85,7 +85,7 @@ export class PaperTradeService implements IPaperTradeService {
    * matching how entry price is derived elsewhere), then a small execution slip
    * is applied so the fill is slightly worse than mid.
    */
-  async prepareSimulatedExecution(
+  prepareSimulatedExecution(
     _inputMint: PublicKey | string,
     outputMint: PublicKey | string,
     amount: number,
@@ -102,7 +102,7 @@ export class PaperTradeService implements IPaperTradeService {
         amountSol,
         expectedOutput: quote.expectedOutput,
       });
-      return null;
+      return Promise.resolve(null);
     }
 
     const midPrice = amountSol / quote.expectedOutput;
@@ -119,22 +119,22 @@ export class PaperTradeService implements IPaperTradeService {
       tokensReceived,
     });
 
-    return {
+    return Promise.resolve({
       signature: `PAPER-${randomUUID()}`,
       executedPrice,
       tokensReceived,
-    };
+    });
   }
 
   /**
    * Never reached for paper trades (the executor short-circuits on the
    * simulated execution), but implemented for interface completeness.
    */
-  async sendAndConfirmTransaction(
+  sendAndConfirmTransaction(
     _transaction: VersionedTransaction,
     _connection: Connection
   ): Promise<string> {
-    return `PAPER-${randomUUID()}`;
+    return Promise.resolve(`PAPER-${randomUUID()}`);
   }
 }
 

@@ -102,7 +102,7 @@ function createProgressCard(item: DashboardTrackedItem, isSelected: boolean): un
     Text({
       id: `${item.id}-summary`,
       content:
-        `${item.name} (${item.symbol}) | Score: ${item.score ?? '--'} | ` +
+        `${item.name} (${item.symbol}) | Score: ${String(item.score ?? '--')} | ` +
         `Opportunity: ${item.opportunity?.status ?? 'none'}`,
     }),
     Text({
@@ -218,21 +218,21 @@ function createProgressPanel(state: AppState): unknown {
 function createMessageRow(index: number, timestamp: string, type: string, content: string): unknown {
   return Box(
     {
-      id: `message-row-${index}-${timestamp}`,
+      id: `message-row-${String(index)}-${timestamp}`,
       flexDirection: 'row',
       width: '100%',
       marginBottom: 1,
     },
     Text({
-      id: `message-time-${index}`,
+      id: `message-time-${String(index)}`,
       content: timestamp.padEnd(10),
     }),
     Text({
-      id: `message-type-${index}`,
-      content: `${type}`.padEnd(12),
+      id: `message-type-${String(index)}`,
+      content: type.padEnd(12),
     }),
     Text({
-      id: `message-content-${index}`,
+      id: `message-content-${String(index)}`,
       content,
     })
   );
@@ -399,9 +399,9 @@ function createPositionsPanel(state: AppState): unknown {
 function createFooter(state: AppState, _botConfig: BotConfig): unknown {
   const metrics = getDashboardMetrics(state.dashboard);
   const footerText =
-    `Tracked: ${metrics.trackedItems} | Opportunities: ${metrics.activeOpportunities} | ` +
-    `Positions: ${metrics.openPositions} | Tool Calls: ${metrics.toolCalls} | ` +
-    `Generated Reports: ${metrics.generatedReports} | Uptime: ${formatElapsed(state.dashboard.startedAt)} | ` +
+    `Tracked: ${String(metrics.trackedItems)} | Opportunities: ${String(metrics.activeOpportunities)} | ` +
+    `Positions: ${String(metrics.openPositions)} | Tool Calls: ${String(metrics.toolCalls)} | ` +
+    `Generated Reports: ${String(metrics.generatedReports)} | Uptime: ${formatElapsed(state.dashboard.startedAt)} | ` +
     `? Help`;
 
   return Box(

@@ -6,10 +6,10 @@ export interface SimulationCreatorProfile {
   twitterVerified?: boolean;
   followerCount?: number | null;
   accountAgeDays?: number | null;
-  previousLaunches?: Array<{
+  previousLaunches?: {
     mint: string;
     rugged: boolean;
-  }>;
+  }[];
 }
 
 export interface SimulationSocialProfile {
