@@ -96,6 +96,12 @@ export const DASHBOARD_AGENT_ORDER: DashboardAgentName[] = [
 const MAX_EVENTS = 120;
 const MAX_NOTES = 12;
 const MAX_ERRORS = 8;
+// In live (paper-mainnet) mode the bot tracks every launch it sees, so the
+// tracked-item list would otherwise grow without bound over a long run — both
+// leaking memory and making each layout rebuild O(items). Cap it, evicting the
+// least-recently-updated items that aren't actively held (no open position and
+// no pending opportunity).
+const MAX_TRACKED_ITEMS = 200;
 
 // Each tracked item carries the same agent pipeline so the progress pane can
 // render a stable execution shape across launches and opportunities.
@@ -172,6 +178,39 @@ function createTrackedItem(event: LaunchpadLaunchEvent): DashboardTrackedItem {
   };
 }
 
+// An item is safe to evict once it no longer represents live capital or a
+// decision the user still needs to make: no open position and no pending
+// opportunity. Such items are historical and only consume memory.
+function isEvictableItem(item: DashboardTrackedItem): boolean {
+  return item.position?.status !== 'open' && item.opportunity?.status !== 'pending';
+}
+
+// Bound the tracked-item list. Assumes `state.trackedItems` is already sorted
+// newest-first (by updatedAt), so the oldest candidates sit at the tail. Walks
+// from the tail evicting evictable items until back under the cap; actively held
+// items are skipped and may keep the list slightly above the cap, which is fine.
+function pruneTrackedItems(state: DashboardState): void {
+  if (state.trackedItems.length <= MAX_TRACKED_ITEMS) {
+    return;
+  }
+
+  for (
+    let index = state.trackedItems.length - 1;
+    index >= 0 && state.trackedItems.length > MAX_TRACKED_ITEMS;
+    index--
+  ) {
+    const item = state.trackedItems[index];
+    if (item !== undefined && isEvictableItem(item)) {
+      state.trackedItems.splice(index, 1);
+      if (state.selectedItemId === item.id) {
+        state.selectedItemId = null;
+      }
+    }
+  }
+
+  ensureSelection(state);
+}
+
 function getOrCreateItem(
   state: DashboardState,
   id: string,
@@ -189,6 +228,7 @@ function getOrCreateItem(
   const item = createTrackedItem(launch);
   state.trackedItems.push(item);
   sortTrackedItems(state);
+  pruneTrackedItems(state);
   ensureSelection(state);
   return item;
 }

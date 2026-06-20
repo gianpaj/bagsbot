@@ -433,7 +433,29 @@ export class OpenTUIApp {
 
     // The main dashboard layout is derived from the dashboard store. Keep
     // overlays mounted separately so modal visibility can be toggled directly.
-    this.rootRenderable.remove('main-layout');
+    //
+    // The previous layout tree must be destroyed, not merely removed: opentui's
+    // `remove(id)` only detaches a renderable (drops it from the parent's child
+    // list and yoga tree) — it does NOT free the native text buffers and yoga
+    // nodes owned by the renderable and its descendants. Those native
+    // allocations live off the JS heap, so the garbage collector cannot reclaim
+    // them; only `destroy()`/`destroyRecursively()` frees them. Because this
+    // method runs on every dashboard event, leaking each discarded tree grows
+    // RSS without bound (tens of GB over hours).
+    //
+    // Destroy the old tree *before* adding the new one: both share the id
+    // `main-layout`, and `add()` overwrites the parent's id->renderable map
+    // entry, so destroying after the add would tear down the freshly added tree.
+    const previousLayout =
+      typeof this.rootRenderable.getRenderable === 'function'
+        ? this.rootRenderable.getRenderable('main-layout')
+        : null;
+    if (previousLayout != null && typeof previousLayout.destroyRecursively === 'function') {
+      previousLayout.destroyRecursively();
+    } else {
+      this.rootRenderable.remove('main-layout');
+    }
+
     this.rootRenderable.add(createMainLayout(this.state, this.config.botConfig));
     this.renderer.requestRender();
   }

@@ -179,6 +179,42 @@ describe('dashboard state', () => {
     expect(report).toContain('Momentum 1h: 2.0x, net +5');
   });
 
+  it('caps tracked items but never evicts open positions or pending opportunities', () => {
+    const state = createDashboardState();
+
+    // A held item (open position) and a pending opportunity must survive eviction.
+    syncPositions(state, [makePosition({ id: 'held', mint: 'held-mint', tokenSymbol: 'HELD' })]);
+    markOpportunityCreated(state, {
+      id: 'opp-1',
+      launch: { mint: 'pending-mint', creator: 'c', name: 'Pending', symbol: 'PEND' },
+      filterResult: {
+        launch: { mint: 'pending-mint', creator: 'c', name: 'Pending', symbol: 'PEND' },
+        totalScore: 50,
+        passed: true,
+        filters: {
+          creator: { passed: true, score: 50, details: '' },
+          technical: { passed: true, score: 50, details: '' },
+          social: { passed: true, score: 50, details: '' },
+          liquidity: { passed: true, score: 50, details: '' },
+        },
+        timestamp: new Date(),
+      },
+      suggestedAmount: 0.1,
+      timestamp: new Date(),
+      status: 'pending',
+    });
+
+    // Flood with evictable (history-only) launches well past the cap.
+    for (let i = 0; i < 500; i++) {
+      trackLaunch(state, { mint: `flood-${i}`, creator: 'c', name: `Flood ${i}`, symbol: 'F' });
+    }
+
+    expect(state.trackedItems.length).toBeLessThanOrEqual(202);
+    const ids = new Set(state.trackedItems.map((item) => item.id));
+    expect(ids.has('held-mint')).toBe(true);
+    expect(ids.has('pending-mint')).toBe(true);
+  });
+
   it('excludes closed positions from the portfolio summary', () => {
     const state = createDashboardState();
     syncPositions(state, [makePosition({ id: 'p1', mint: 'mint-1', currentValue: 2 })]);
