@@ -20,12 +20,13 @@ vi.mock('fs', () => ({
   readFileSync: vi.fn(),
   writeFileSync: vi.fn(),
   mkdirSync: vi.fn(),
+  renameSync: vi.fn(),
   existsSync: vi.fn(),
   rmSync: vi.fn(),
 }));
 
 // Get the mocked functions
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs';
+import { readFileSync, writeFileSync, mkdirSync, renameSync, existsSync } from 'fs';
 
 describe('PositionStorage', () => {
   const storagePath = `${homedir()}/.bagsbot/positions.json`;
@@ -74,6 +75,20 @@ describe('PositionStorage', () => {
     vi.mocked(mkdirSync).mockImplementation(() => {
       // Mock directory creation - just track that it was called
       return undefined as any;
+    });
+
+    vi.mocked(renameSync).mockImplementation((from: unknown, to: unknown) => {
+      // Mimic an atomic rename over the in-memory file store: the destination
+      // is replaced wholesale and the source temp file is removed.
+      if (typeof from === 'string' && typeof to === 'string') {
+        if (!(from in mockFileStore)) {
+          const error = new Error('ENOENT: no such file or directory') as NodeJS.ErrnoException;
+          error.code = 'ENOENT';
+          throw error;
+        }
+        mockFileStore[to] = mockFileStore[from];
+        Reflect.deleteProperty(mockFileStore, from);
+      }
     });
 
     storage = new PositionStorage();
@@ -318,6 +333,57 @@ describe('PositionStorage', () => {
       expect(parsed.currentValue).toBe(4.0);
       expect(parsed.pnlPercent).toBe(300);
       expect(parsed.status).toBe('closed');
+    });
+  });
+
+  describe('atomic write (TP-1 regression)', () => {
+    it('should write to a temp sibling then rename over the target', () => {
+      storage.save([mockPosition]);
+
+      // The serialized payload must land on a temp path first, never directly
+      // on the live positions.json, then be renamed atomically into place.
+      const tmpPath = `${storagePath}.tmp`;
+      expect(vi.mocked(writeFileSync)).toHaveBeenCalledWith(
+        tmpPath,
+        expect.any(String),
+        'utf-8'
+      );
+      expect(vi.mocked(writeFileSync)).not.toHaveBeenCalledWith(
+        storagePath,
+        expect.anything(),
+        expect.anything()
+      );
+      expect(vi.mocked(renameSync)).toHaveBeenCalledWith(tmpPath, storagePath);
+
+      // After the rename, the live file holds the full payload and no temp
+      // file is left behind.
+      expect(storagePath in mockFileStore).toBe(true);
+      expect(tmpPath in mockFileStore).toBe(false);
+    });
+
+    it('should not corrupt existing positions when a write fails partway', () => {
+      // Seed a known-good positions.json.
+      storage.save([mockPosition]);
+      expect(storage.load()).toHaveLength(1);
+
+      // Simulate a crash mid-write: the very next writeFileSync truncates its
+      // target and then throws (e.g. ENOSPC / power loss).
+      vi.mocked(writeFileSync).mockImplementationOnce((path: unknown, data: unknown) => {
+        if (typeof path === 'string') {
+          const full = typeof data === 'string' ? data : '';
+          mockFileStore[path] = full.slice(0, Math.floor(full.length / 2));
+        }
+        const error = new Error('ENOSPC: no space left on device');
+        throw error;
+      });
+
+      expect(() => storage.save([{ ...mockPosition, id: 'replacement' }])).toThrow();
+
+      // The live positions.json must remain intact and loadable: atomic writes
+      // confine the damage to the throwaway temp file, never the real file.
+      const loaded = storage.load();
+      expect(loaded).toHaveLength(1);
+      expect(loaded[0].id).toBe(mockPosition.id);
     });
   });
 

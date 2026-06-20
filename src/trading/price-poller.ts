@@ -134,7 +134,11 @@ export class PaperPricePoller {
 
     try {
       const quote = await this.tradeService.getQuote(WSOL_MINT, position.mint, probeLamports);
-      if (quote.expectedOutput <= 0) {
+      // The raw trade service (SDK adapter) coerces quote fields via Number(),
+      // so a missing/zero `outAmount` yields NaN/0. `<= 0` alone lets NaN and
+      // Infinity through, producing a NaN/Infinity price that would corrupt the
+      // position. Require a finite, positive output before dividing.
+      if (!Number.isFinite(quote.expectedOutput) || quote.expectedOutput <= 0) {
         return null;
       }
       return probeSol / quote.expectedOutput;

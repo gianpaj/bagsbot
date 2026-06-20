@@ -5,6 +5,7 @@ import {
   calculateBackoffDelay,
   RetryAbortedError,
   RetryExhaustedError,
+  RetryTimeoutError,
 } from './retry.js';
 
 describe('calculateBackoffDelay', () => {
@@ -128,10 +129,15 @@ describe('retry', () => {
 
       const promise = retry(fn, { maxRetries: 2, baseDelayMs: 100 });
 
+      // Attach the rejection handler BEFORE flushing timers. Otherwise the
+      // retry promise settles (rejects) during runAllTimersAsync() while no
+      // handler is attached yet, which surfaces as an unhandled rejection.
+      const assertion = expect(promise).rejects.toThrow(RetryExhaustedError);
+
       // Advance through all retries and let promise settle
       await vi.runAllTimersAsync();
 
-      await expect(promise).rejects.toThrow(RetryExhaustedError);
+      await assertion;
       expect(fn).toHaveBeenCalledTimes(3); // initial + 2 retries
     });
 
@@ -140,16 +146,20 @@ describe('retry', () => {
 
       const promise = retry(fn, { maxRetries: 3, baseDelayMs: 100 });
 
+      // Capture the settled error before flushing timers so the rejection is
+      // always handled (otherwise it leaks as an unhandled rejection during
+      // runAllTimersAsync()).
+      const captured = promise.then(
+        () => undefined,
+        (error: unknown) => error
+      );
+
       // Run all timers to completion
       await vi.runAllTimersAsync();
 
-      try {
-        await promise;
-        expect.fail('Should have thrown');
-      } catch (error) {
-        expect(error).toBeInstanceOf(RetryExhaustedError);
-        expect((error as RetryExhaustedError).attempts).toBe(4);
-      }
+      const error = await captured;
+      expect(error).toBeInstanceOf(RetryExhaustedError);
+      expect((error as RetryExhaustedError).attempts).toBe(4);
     });
 
     it('should include original error as cause in RetryExhaustedError', async () => {
@@ -158,15 +168,18 @@ describe('retry', () => {
 
       const promise = retry(fn, { maxRetries: 1, baseDelayMs: 100 });
 
+      // Capture the settled error before flushing timers so the rejection is
+      // always handled (avoids a leaked unhandled rejection).
+      const captured = promise.then(
+        () => undefined,
+        (error: unknown) => error
+      );
+
       await vi.runAllTimersAsync();
 
-      try {
-        await promise;
-        expect.fail('Should have thrown');
-      } catch (error) {
-        expect(error).toBeInstanceOf(RetryExhaustedError);
-        expect((error as RetryExhaustedError).cause).toBe(originalError);
-      }
+      const error = await captured;
+      expect(error).toBeInstanceOf(RetryExhaustedError);
+      expect((error as RetryExhaustedError).cause).toBe(originalError);
     });
   });
 
@@ -210,9 +223,13 @@ describe('retry', () => {
         shouldRetry: (error) => error instanceof RetryableError,
       });
 
+      // Attach the rejection handler before flushing timers (avoids a leaked
+      // unhandled rejection when the promise settles during runAllTimersAsync).
+      const assertion = expect(promise).rejects.toThrow(NonRetryableError);
+
       await vi.runAllTimersAsync();
 
-      await expect(promise).rejects.toThrow(NonRetryableError);
+      await assertion;
       expect(fn).toHaveBeenCalledTimes(2);
     });
   });
@@ -323,15 +340,99 @@ describe('retry', () => {
     });
   });
 
+  describe('per-attempt timeout (TP-3 regression)', () => {
+    it('should time out an attempt whose fn never settles', async () => {
+      // Without timeoutMs this attempt would hang forever and the retry loop
+      // would never make progress (no timer is scheduled to flush).
+      const fn = vi.fn().mockReturnValue(new Promise(() => undefined));
+
+      // shouldRetry:false so the raw timeout error surfaces (not wrapped in
+      // RetryExhaustedError).
+      const promise = retry(fn, { maxRetries: 3, timeoutMs: 1000, shouldRetry: () => false });
+
+      // Capture the settled error before flushing timers so the rejection is
+      // always handled (avoids a leaked unhandled rejection).
+      const captured = promise.then(
+        () => undefined,
+        (error: unknown) => error
+      );
+
+      await vi.runAllTimersAsync();
+
+      const error = await captured;
+      expect(error).toBeInstanceOf(RetryTimeoutError);
+      expect((error as RetryTimeoutError).timeoutMs).toBe(1000);
+      expect(fn).toHaveBeenCalledTimes(1);
+    });
+
+    it('should retry a timed-out attempt and exhaust with a timeout cause', async () => {
+      const fn = vi.fn().mockReturnValue(new Promise(() => undefined));
+
+      const promise = retry(fn, { maxRetries: 2, baseDelayMs: 100, timeoutMs: 500 });
+
+      const captured = promise.then(
+        () => undefined,
+        (error: unknown) => error
+      );
+
+      await vi.runAllTimersAsync();
+
+      const error = await captured;
+      expect(error).toBeInstanceOf(RetryExhaustedError);
+      expect((error as RetryExhaustedError).cause).toBeInstanceOf(RetryTimeoutError);
+      expect(fn).toHaveBeenCalledTimes(3); // initial + 2 retries, each timed out
+    });
+
+    it('should resolve when fn settles before the timeout', async () => {
+      const fn = vi.fn().mockImplementation(
+        () =>
+          new Promise((resolve) => {
+            setTimeout(() => {
+              resolve('ok');
+            }, 200);
+          })
+      );
+
+      const promise = retry(fn, { timeoutMs: 1000 });
+
+      await vi.runAllTimersAsync();
+
+      await expect(promise).resolves.toBe('ok');
+      expect(fn).toHaveBeenCalledTimes(1);
+    });
+
+    it('should not time out when no timeoutMs is provided', async () => {
+      const fn = vi.fn().mockImplementation(
+        () =>
+          new Promise((resolve) => {
+            setTimeout(() => {
+              resolve('slow-but-fine');
+            }, 60_000);
+          })
+      );
+
+      const promise = retry(fn);
+
+      await vi.runAllTimersAsync();
+
+      await expect(promise).resolves.toBe('slow-but-fine');
+      expect(fn).toHaveBeenCalledTimes(1);
+    });
+  });
+
   describe('default options', () => {
     it('should use default maxRetries of 3', async () => {
       const fn = vi.fn().mockRejectedValue(new Error('fail'));
 
       const promise = retry(fn, { baseDelayMs: 100 });
 
+      // Attach the rejection handler before flushing timers (avoids a leaked
+      // unhandled rejection when the promise settles during runAllTimersAsync).
+      const assertion = expect(promise).rejects.toThrow(RetryExhaustedError);
+
       await vi.runAllTimersAsync();
 
-      await expect(promise).rejects.toThrow(RetryExhaustedError);
+      await assertion;
       expect(fn).toHaveBeenCalledTimes(4); // initial + 3 retries
     });
 
@@ -389,6 +490,28 @@ describe('RetryExhaustedError', () => {
 
   it('should be instanceof Error', () => {
     const error = new RetryExhaustedError('message', new Error('cause'), 3);
+    expect(error).toBeInstanceOf(Error);
+  });
+});
+
+describe('RetryTimeoutError', () => {
+  it('should have correct name', () => {
+    const error = new RetryTimeoutError(5000);
+    expect(error.name).toBe('RetryTimeoutError');
+  });
+
+  it('should include the timeout in the message', () => {
+    const error = new RetryTimeoutError(5000);
+    expect(error.message).toBe('Operation timed out after 5000ms');
+  });
+
+  it('should expose the timeoutMs', () => {
+    const error = new RetryTimeoutError(5000);
+    expect(error.timeoutMs).toBe(5000);
+  });
+
+  it('should be instanceof Error', () => {
+    const error = new RetryTimeoutError(5000);
     expect(error).toBeInstanceOf(Error);
   });
 });

@@ -234,6 +234,88 @@ describe('TradeExecutor', () => {
 
       expect(mockLoggerError).toHaveBeenCalled();
     });
+
+    describe('invalid-quote rejection (TP-2 regression)', () => {
+      // A malformed quote (e.g. the SDK adapter coercing a missing/zero `outAmount`
+      // via Number() to NaN/0) must never be returned: downstream trade math divides
+      // by expectedOutput, so an unguarded NaN/0/negative poisons the executed price
+      // and all PnL. getQuote must reject it as a TradeError instead.
+      const badOutputs: [string, number][] = [
+        ['zero', 0],
+        ['negative', -1000],
+        ['NaN', NaN],
+        ['Infinity', Infinity],
+      ];
+
+      for (const [label, expectedOutput] of badOutputs) {
+        it(`should reject a quote whose expectedOutput is ${label}`, async () => {
+          mockTradeService.getQuote.mockResolvedValue({
+            inputAmount: testAmountSol * 1_000_000_000,
+            expectedOutput,
+            priceImpact: 0.02,
+            route: 'Raydium',
+          });
+
+          await expect(executor.getQuote(testMint, testAmountSol)).rejects.toThrow(TradeError);
+          await expect(executor.getQuote(testMint, testAmountSol)).rejects.toThrow(
+            /invalid expectedOutput/
+          );
+        });
+      }
+
+      it('should reject a quote whose priceImpact is NaN', async () => {
+        mockTradeService.getQuote.mockResolvedValue({
+          inputAmount: testAmountSol * 1_000_000_000,
+          expectedOutput: 1000,
+          priceImpact: NaN,
+          route: 'Raydium',
+        });
+
+        await expect(executor.getQuote(testMint, testAmountSol)).rejects.toThrow(
+          /invalid priceImpact/
+        );
+      });
+
+      it('should still accept a valid quote with zero priceImpact', async () => {
+        mockTradeService.getQuote.mockResolvedValue({
+          inputAmount: testAmountSol * 1_000_000_000,
+          expectedOutput: 1000,
+          priceImpact: 0,
+          route: 'JUPITER/datapi',
+        });
+
+        const quote = await executor.getQuote(testMint, testAmountSol);
+        expect(quote.expectedOutput).toBe(1000);
+        expect(quote.priceImpact).toBe(0);
+      });
+    });
+
+    describe('hung-request timeout (TP-3 regression)', () => {
+      // A Bags SDK call that never settles (no response, dropped socket) must not
+      // block the trade path forever. getQuote wraps each attempt in a per-attempt
+      // timeout so a hung request is aborted, retried, and ultimately surfaced as a
+      // TradeError instead of hanging the bot.
+      it('should bound a hung getQuote with a per-attempt timeout', async () => {
+        vi.useFakeTimers();
+        try {
+          // The SDK call never resolves or rejects.
+          mockTradeService.getQuote.mockReturnValue(new Promise(() => undefined));
+
+          const promise = executor.getQuote(testMint, testAmountSol);
+          // Attach the rejection handler before flushing timers so the rejection
+          // is always handled (avoids a leaked unhandled rejection).
+          const assertion = expect(promise).rejects.toThrow(TradeError);
+
+          await vi.runAllTimersAsync();
+
+          await assertion;
+          // initial attempt + maxRetries(3), each timed out instead of hanging.
+          expect(mockTradeService.getQuote).toHaveBeenCalledTimes(4);
+        } finally {
+          vi.useRealTimers();
+        }
+      });
+    });
   });
 
   describe('prepareSwap', () => {
@@ -448,6 +530,29 @@ describe('TradeExecutor', () => {
 
       expect(result.success).toBe(false);
       expect(mockTradeService.sendAndConfirmTransaction).toHaveBeenCalledTimes(1);
+    });
+
+    it('should refuse to execute when the prepared quote has invalid expectedOutput', async () => {
+      // Defense in depth for TP-2: even if a malformed quote bypasses getQuote
+      // (e.g. a hand-built prepared swap), executeSwap must not divide
+      // inputAmount / expectedOutput into an Infinity/NaN executedPrice.
+      for (const badOutput of [0, -5, NaN, Infinity]) {
+        mockTradeService.sendAndConfirmTransaction.mockClear();
+        (mockWalletManager.sign as Mock).mockClear();
+
+        const badPrepared = {
+          ...prepared,
+          quote: { ...prepared.quote, expectedOutput: badOutput },
+        };
+
+        const result = await executor.executeSwap(badPrepared);
+
+        expect(result.success).toBe(false);
+        expect(result.error).toContain('invalid expectedOutput');
+        // Must short-circuit before signing or submitting anything.
+        expect(mockWalletManager.sign).not.toHaveBeenCalled();
+        expect(mockTradeService.sendAndConfirmTransaction).not.toHaveBeenCalled();
+      }
     });
 
     it('should return error result on execution failure', async () => {

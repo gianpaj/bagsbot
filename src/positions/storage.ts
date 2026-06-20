@@ -7,7 +7,7 @@
  * @module positions/storage
  */
 
-import { readFileSync, writeFileSync, mkdirSync } from 'fs';
+import { readFileSync, writeFileSync, mkdirSync, renameSync } from 'fs';
 import { dirname } from 'path';
 import { homedir } from 'os';
 import { Position } from '../types/positions.js';
@@ -139,6 +139,7 @@ export class PositionStorage {
     try {
       const dirPath = getStorageDir();
       const filePath = getStoragePath();
+      const tmpPath = `${filePath}.tmp`;
 
       // Create directory if it doesn't exist
       mkdirSync(dirPath, { recursive: true });
@@ -146,8 +147,13 @@ export class PositionStorage {
       // Serialize positions
       const serialized = positions.map((position) => serializePosition(position));
 
-      // Write to file
-      writeFileSync(filePath, JSON.stringify(serialized, null, 2), 'utf-8');
+      // Atomic write: serialize to a temp sibling first, then rename it over
+      // the live file. renameSync is atomic on POSIX, so a crash, power loss,
+      // or interleaved writer can never leave positions.json truncated — a
+      // concurrent reader always sees either the complete old or complete new
+      // file. A failure during the temp write damages only the throwaway temp.
+      writeFileSync(tmpPath, JSON.stringify(serialized, null, 2), 'utf-8');
+      renameSync(tmpPath, filePath);
 
       logger.debug('Saved positions to storage', {
         count: positions.length,

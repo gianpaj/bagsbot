@@ -22,12 +22,13 @@ vi.mock('fs', () => ({
   readFileSync: vi.fn(),
   writeFileSync: vi.fn(),
   mkdirSync: vi.fn(),
+  renameSync: vi.fn(),
   existsSync: vi.fn(),
   rmSync: vi.fn(),
 }));
 
 // Get the mocked functions
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs';
+import { readFileSync, writeFileSync, mkdirSync, renameSync, existsSync } from 'fs';
 
 // Mock data
 const mockLaunchEvent: LaunchpadLaunchEvent = {
@@ -86,6 +87,19 @@ describe('PositionManager', () => {
     vi.mocked(mkdirSync).mockImplementation(() => {
       // Mock directory creation - just track that it was called
       return undefined as any;
+    });
+
+    vi.mocked(renameSync).mockImplementation((from: unknown, to: unknown) => {
+      // Mirror the atomic temp-file rename PositionStorage.save performs.
+      if (typeof from === 'string' && typeof to === 'string') {
+        if (!(from in mockFileStore)) {
+          const error = new Error('ENOENT: no such file or directory') as NodeJS.ErrnoException;
+          error.code = 'ENOENT';
+          throw error;
+        }
+        mockFileStore[to] = mockFileStore[from];
+        Reflect.deleteProperty(mockFileStore, from);
+      }
     });
 
     manager = new PositionManager();
@@ -188,6 +202,34 @@ describe('PositionManager', () => {
       expect(() => {
         manager.addPosition(mockTradeResult, mockLaunchEvent, 0.00001, 10000, 0);
       }).toThrow('Position parameters must be positive numbers');
+    });
+
+    describe('non-finite parameter rejection (TP-5 regression)', () => {
+      // A bare `<= 0` guard lets NaN/Infinity through (NaN <= 0 and Infinity <= 0
+      // are both false), so a poisoned entry basis would be persisted and corrupt
+      // every downstream PnL/value figure permanently. Each non-finite parameter
+      // must be rejected (thrown) and must NOT create or persist a position.
+      it.each([
+        ['NaN entryPrice', NaN, 10000, 0.1],
+        ['Infinity entryPrice', Infinity, 10000, 0.1],
+        ['NaN tokensHeld', 0.00001, NaN, 0.1],
+        ['Infinity tokensHeld', 0.00001, Infinity, 0.1],
+        ['NaN entrySol', 0.00001, 10000, NaN],
+        ['Infinity entrySol', 0.00001, 10000, Infinity],
+      ])('rejects %s without creating or persisting a position', (_label, price, tokens, sol) => {
+        const writesBefore = vi.mocked(renameSync).mock.calls.length;
+
+        expect(() => {
+          manager.addPosition(mockTradeResult, mockLaunchEvent, price, tokens, sol);
+        }).toThrow('Position parameters must be positive numbers');
+
+        // No position was created in memory...
+        expect(manager.getAllPositions()).toHaveLength(0);
+        // ...and nothing was persisted for the rejected open.
+        expect(vi.mocked(renameSync).mock.calls.length).toBe(writesBefore);
+        // A fresh manager loading from disk sees no corrupt position either.
+        expect(new PositionManager().getAllPositions()).toHaveLength(0);
+      });
     });
   });
 
@@ -391,6 +433,41 @@ describe('PositionManager', () => {
       const updated = manager.getPosition(position.id);
       expect(updated?.currentValue).toBe(0.05); // 10000 * 0.000005
       expect(updated?.pnlPercent).toBe(-50); // (0.05 - 0.1) / 0.1 * 100
+    });
+
+    describe('invalid price rejection (TP-4 regression)', () => {
+      it.each([
+        ['NaN', NaN],
+        ['Infinity', Infinity],
+        ['negative Infinity', -Infinity],
+        ['zero', 0],
+        ['negative', -0.0001],
+      ])('ignores a %s price without mutating or persisting the position', (_label, badPrice) => {
+        const position = manager.addPosition(mockTradeResult, mockLaunchEvent, 0.00001, 10000, 0.1);
+        // Seed a known-good price first so we can prove it survives the bad tick.
+        manager.updatePositionPrice(position.id, 0.0001);
+        const writesAfterGood = vi.mocked(renameSync).mock.calls.length;
+
+        // A bad price must not throw (callers run this in fire-and-forget loops).
+        expect(() => {
+          manager.updatePositionPrice(position.id, badPrice);
+        }).not.toThrow();
+
+        const updated = manager.getPosition(position.id);
+        // The previous good metrics are retained, never overwritten with NaN/Infinity.
+        expect(updated?.currentPrice).toBe(0.0001);
+        expect(updated?.currentValue).toBe(1.0);
+        expect(updated?.pnlPercent).toBe(900);
+
+        // No additional persist happened for the rejected tick.
+        expect(vi.mocked(renameSync).mock.calls.length).toBe(writesAfterGood);
+
+        // And the on-disk copy is the good value, never a corrupt one.
+        const manager2 = new PositionManager();
+        const loaded = manager2.getPosition(position.id);
+        expect(loaded?.currentValue).toBe(1.0);
+        expect(Number.isFinite(loaded?.currentValue ?? NaN)).toBe(true);
+      });
     });
   });
 

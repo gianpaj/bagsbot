@@ -101,6 +101,16 @@ const DEFAULT_TRADE_CONFIG: TradeConfig = {
 };
 
 /**
+ * Per-attempt network timeouts (ms) for the Bags SDK calls. Without these a
+ * hung request (no response, dropped socket) would block the trade path
+ * indefinitely, because `retry` only re-attempts once the underlying call
+ * settles. Each attempt that exceeds its budget is aborted and retried.
+ */
+const QUOTE_TIMEOUT_MS = 10_000;
+const PREPARE_TIMEOUT_MS = 15_000;
+const SUBMIT_TIMEOUT_MS = 60_000;
+
+/**
  * TradeExecutor class for managing token swap execution
  *
  * Coordinates with Bags SDK to:
@@ -187,6 +197,7 @@ export class TradeExecutor {
         {
           maxRetries: this.config.maxRetries,
           baseDelayMs: 500,
+          timeoutMs: QUOTE_TIMEOUT_MS,
           shouldRetry: (error) => {
             // Retry on network errors, but not on invalid mint errors
             const errorMsg = error instanceof Error ? error.message : '';
@@ -202,6 +213,21 @@ export class TradeExecutor {
           },
         }
       );
+
+      // Guard the trade math: a malformed quote (e.g. the SDK adapter coercing a
+      // missing/zero `outAmount` via Number() to NaN/0) would otherwise flow into
+      // `executedPrice = inputAmount / expectedOutput` as Infinity/NaN and poison
+      // the position entry price and all downstream PnL. Reject it at the source.
+      if (!Number.isFinite(quoteData.expectedOutput) || quoteData.expectedOutput <= 0) {
+        throw new Error(
+          `quote returned invalid expectedOutput (${String(quoteData.expectedOutput)})`
+        );
+      }
+      if (!Number.isFinite(quoteData.priceImpact)) {
+        throw new Error(
+          `quote returned invalid priceImpact (${String(quoteData.priceImpact)})`
+        );
+      }
 
       const quote: TradeQuote = {
         inputMint: 'So11111111111111111111111111111111111111112',
@@ -280,6 +306,7 @@ export class TradeExecutor {
           {
             maxRetries: this.config.maxRetries,
             baseDelayMs: 500,
+            timeoutMs: PREPARE_TIMEOUT_MS,
             shouldRetry: (error) => {
               // Retry on network errors, but not on validation errors
               const errorMsg = error instanceof Error ? error.message : '';
@@ -405,6 +432,22 @@ export class TradeExecutor {
       };
     }
 
+    // Defense in depth: never let a non-finite or non-positive expectedOutput
+    // reach the `executedPrice = inputAmount / expectedOutput` division below,
+    // which would emit Infinity/NaN as the executed price for a real fill.
+    const { expectedOutput } = prepared.quote;
+    if (!Number.isFinite(expectedOutput) || expectedOutput <= 0) {
+      const errorMsg = `Prepared swap has invalid expectedOutput: ${String(expectedOutput)}`;
+      logger.error('Refusing to execute swap with invalid quote', {
+        mint: mintStr,
+        expectedOutput,
+      });
+      return {
+        success: false,
+        error: errorMsg,
+      };
+    }
+
     try {
       // Sign the transaction
       let signedTx: VersionedTransaction | Transaction;
@@ -431,6 +474,7 @@ export class TradeExecutor {
           {
             maxRetries: this.config.maxRetries,
             baseDelayMs: 1000,
+            timeoutMs: SUBMIT_TIMEOUT_MS,
             shouldRetry: (error) => {
               // Retry on network errors, but not on signature validation errors
               const errorMsg = error instanceof Error ? error.message : '';

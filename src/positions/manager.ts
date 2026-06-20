@@ -125,7 +125,23 @@ export class PositionManager {
       throw new Error('Cannot add position for failed trade');
     }
 
-    if (entryPrice <= 0 || tokensHeld <= 0 || entrySol <= 0) {
+    // Reject non-finite as well as non-positive values. A bare `<= 0` check is a
+    // partial guard that *looks* complete: `NaN <= 0` and `Infinity <= 0` are
+    // both `false`, so a NaN/Infinity slipping in from upstream trade math (e.g.
+    // the synthetic simulation deriving `executedPrice` from a NaN current price)
+    // would otherwise be written straight into the position's *permanent* entry
+    // basis and persisted, poisoning every currentValue/pnlPercent/getTotalPnL/
+    // getStatistics figure derived from it for the life of the position. Unlike
+    // updatePositionPrice (a fire-and-forget poll loop), this is the trade-open
+    // path whose callers already try/catch a throw, so failing loudly is correct.
+    if (
+      !Number.isFinite(entryPrice) ||
+      entryPrice <= 0 ||
+      !Number.isFinite(tokensHeld) ||
+      tokensHeld <= 0 ||
+      !Number.isFinite(entrySol) ||
+      entrySol <= 0
+    ) {
       throw new Error('Position parameters must be positive numbers');
     }
 
@@ -366,6 +382,22 @@ export class PositionManager {
 
     if (position === undefined) {
       throw new Error(`Position not found: ${id}`);
+    }
+
+    // Guard the money math: a non-finite or non-positive price (e.g. a price
+    // feed dividing by a NaN/0 quote `expectedOutput`) would otherwise be
+    // written into `currentValue`/`pnlPercent` and then atomically persisted to
+    // disk, silently corrupting the position's tracked value and every
+    // downstream portfolio PnL/statistics figure. Skip the bad tick instead of
+    // poisoning persisted state. This intentionally does NOT throw: callers run
+    // it inside fire-and-forget poll loops where a throw would surface as an
+    // unhandled rejection.
+    if (!Number.isFinite(currentPrice) || currentPrice <= 0) {
+      logger.warn('Ignoring invalid position price update', {
+        positionId: id,
+        currentPrice,
+      });
+      return;
     }
 
     position.currentPrice = currentPrice;

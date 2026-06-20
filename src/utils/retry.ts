@@ -37,6 +37,19 @@ export interface RetryOptions {
   shouldRetry?: (error: unknown) => boolean;
 
   /**
+   * Per-attempt timeout in milliseconds. When set, each invocation of `fn` is
+   * raced against this timeout; if `fn` does not settle in time the attempt
+   * rejects with a {@link RetryTimeoutError} (which is treated as a normal
+   * error and is therefore subject to `shouldRetry`/`maxRetries`).
+   *
+   * Guards against network calls that hang indefinitely (no response, dropped
+   * socket) — without a timeout such a call would block the retry loop forever,
+   * since `retry` only acts once `fn` settles.
+   * @default undefined (no per-attempt timeout)
+   */
+  timeoutMs?: number;
+
+  /**
    * AbortSignal to cancel the retry operation
    */
   signal?: AbortSignal;
@@ -51,7 +64,7 @@ export interface RetryOptions {
 /**
  * Default retry options
  */
-const DEFAULT_OPTIONS: Required<Omit<RetryOptions, 'signal' | 'onRetry'>> = {
+const DEFAULT_OPTIONS: Required<Omit<RetryOptions, 'signal' | 'onRetry' | 'timeoutMs'>> = {
   maxRetries: 3,
   baseDelayMs: 1000,
   maxDelayMs: 30000,
@@ -65,6 +78,22 @@ export class RetryAbortedError extends Error {
   constructor(message = 'Retry operation was aborted') {
     super(message);
     this.name = 'RetryAbortedError';
+  }
+}
+
+/**
+ * Error thrown when a single attempt exceeds the configured per-attempt timeout
+ */
+export class RetryTimeoutError extends Error {
+  /**
+   * The timeout (in milliseconds) that was exceeded
+   */
+  public readonly timeoutMs: number;
+
+  constructor(timeoutMs: number) {
+    super(`Operation timed out after ${String(timeoutMs)}ms`);
+    this.name = 'RetryTimeoutError';
+    this.timeoutMs = timeoutMs;
   }
 }
 
@@ -165,6 +194,44 @@ export function sleep(ms: number, signal?: AbortSignal): Promise<void> {
 }
 
 /**
+ * Run a single attempt with an optional per-attempt timeout.
+ *
+ * `fn`'s promise is raced against a timeout. Using `Promise.race` preserves the
+ * original rejection reason from `fn` (rather than re-wrapping it). The in-flight
+ * `fn()` promise also gets its own no-op rejection handler, so even if `fn`
+ * rejects *after* the timeout has already won the race it never surfaces as an
+ * unhandled rejection.
+ *
+ * @param fn - The function to invoke for this attempt
+ * @param timeoutMs - Per-attempt timeout; when undefined `fn` is awaited directly
+ * @returns The resolved value of `fn`
+ * @throws RetryTimeoutError if `fn` does not settle within `timeoutMs`
+ */
+function runAttempt<T>(fn: () => Promise<T>, timeoutMs: number | undefined): Promise<T> {
+  if (timeoutMs === undefined) {
+    return fn();
+  }
+
+  const fnPromise = fn();
+  // Ensure a late rejection (after the timeout already won the race) is always
+  // handled, so it never leaks as an unhandled rejection.
+  void fnPromise.catch(() => undefined);
+
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(() => {
+      reject(new RetryTimeoutError(timeoutMs));
+    }, timeoutMs);
+  });
+
+  return Promise.race([fnPromise, timeoutPromise]).finally(() => {
+    if (timeoutId !== undefined) {
+      clearTimeout(timeoutId);
+    }
+  });
+}
+
+/**
  * Retry an async function with exponential backoff
  *
  * @typeParam T - Return type of the function being retried
@@ -208,6 +275,7 @@ export async function retry<T>(fn: () => Promise<T>, options: RetryOptions = {})
     baseDelayMs = DEFAULT_OPTIONS.baseDelayMs,
     maxDelayMs = DEFAULT_OPTIONS.maxDelayMs,
     shouldRetry = DEFAULT_OPTIONS.shouldRetry,
+    timeoutMs,
     signal,
     onRetry,
   } = options;
@@ -222,7 +290,7 @@ export async function retry<T>(fn: () => Promise<T>, options: RetryOptions = {})
     }
 
     try {
-      return await fn();
+      return await runAttempt(fn, timeoutMs);
     } catch (error) {
       lastError = error;
       attempt++;

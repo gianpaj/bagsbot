@@ -60,6 +60,49 @@ describe('PaperPricePoller', () => {
     expect(onPositionsUpdated).toHaveBeenCalled();
   });
 
+  it.each([
+    ['NaN', NaN],
+    ['Infinity', Infinity],
+    ['zero', 0],
+  ])('skips a position when the quote expectedOutput is %s (TP-4 regression)', async (_label, badOutput) => {
+    const position = createPosition();
+
+    // A raw SDK quote whose expectedOutput is non-finite/zero must NOT be turned
+    // into a NaN/Infinity price and fed into updatePositionPrice.
+    const tradeService = {
+      getQuote: vi.fn(async () => ({
+        inputAmount: 100_000_000,
+        expectedOutput: badOutput,
+        priceImpact: 0.01,
+        route: 'LIVE/jup',
+      })),
+      prepareSwap: vi.fn(),
+      sendAndConfirmTransaction: vi.fn(),
+    } as unknown as IBagsTradeService;
+
+    const updatePositionPrice = vi.fn();
+    const positionManager = {
+      getOpenPositions: vi.fn(() => [position]),
+      updatePositionPrice,
+      getPosition: vi.fn(() => position),
+    } as unknown as PositionManager;
+    const exitMonitor = { updatePosition: vi.fn() } as unknown as ExitMonitor;
+
+    // Small interval so a *second* tick proves the first tick fully completed
+    // (waiting only for getQuote to be *called* races the post-await code that
+    // would invoke updatePositionPrice).
+    const poller = new PaperPricePoller(tradeService, 5);
+    poller.start({ positionManager, exitMonitor });
+
+    await vi.waitFor(() => {
+      expect((tradeService.getQuote as ReturnType<typeof vi.fn>).mock.calls.length)
+        .toBeGreaterThanOrEqual(2);
+    });
+    poller.stop();
+
+    expect(updatePositionPrice).not.toHaveBeenCalled();
+  });
+
   it('skips a position when its quote fails', async () => {
     const position = createPosition();
     const tradeService = {

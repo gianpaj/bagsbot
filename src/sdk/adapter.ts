@@ -122,15 +122,77 @@ export class BagsTradeServiceAdapter implements IBagsTradeService {
 
     // Wait for confirmation
     const latestBlockhash = await connection.getLatestBlockhash();
-    await connection.confirmTransaction({
-      signature,
-      blockhash: latestBlockhash.blockhash,
-      lastValidBlockHeight: latestBlockhash.lastValidBlockHeight,
-    }, 'confirmed');
+    let confirmation;
+    try {
+      confirmation = await connection.confirmTransaction({
+        signature,
+        blockhash: latestBlockhash.blockhash,
+        lastValidBlockHeight: latestBlockhash.lastValidBlockHeight,
+      }, 'confirmed');
+    } catch (error) {
+      // The confirmation poll failed (RPC timeout, dropped socket, or the
+      // blockhash expired before a confirmation was observed). The transaction
+      // may nonetheless have landed on-chain; surfacing a clean failure here
+      // would make the executor report `success: false` and leave the bought
+      // tokens permanently untracked (a false negative). Re-check the on-chain
+      // status before giving up so a landed buy is still reported as a success.
+      if (await this.didTransactionLand(connection, signature)) {
+        adapterLogger.warn('Confirmation poll failed but transaction landed on-chain', {
+          signature,
+          error: error instanceof Error ? error.message : String(error),
+        });
+        return signature;
+      }
+      throw error instanceof Error ? error : new Error(String(error));
+    }
+
+    // A transaction can be confirmed yet still have failed on-chain (e.g. a
+    // slippage/balance revert sets `err`). Ignoring this would report a reverted
+    // transaction as a successful buy (a false positive) and record a position
+    // the wallet never received. Treat an execution error as a failed swap.
+    if (confirmation.value.err !== null) {
+      throw new Error(
+        `Transaction ${signature} failed on-chain: ${JSON.stringify(confirmation.value.err)}`
+      );
+    }
 
     adapterLogger.debug('Transaction confirmed', { signature });
 
     return signature;
+  }
+
+  /**
+   * Best-effort check of whether a transaction landed and succeeded on-chain.
+   *
+   * Used to disambiguate a failed confirmation *poll* from a genuinely failed
+   * transaction: a transaction whose confirmation timed out may still have been
+   * committed. Returns `true` only when the signature is committed
+   * (`confirmed`/`finalized`) with no execution error. Any lookup failure is
+   * treated as "did not land" so the caller falls back to the original error.
+   */
+  private async didTransactionLand(
+    connection: Connection,
+    signature: string
+  ): Promise<boolean> {
+    try {
+      const status = await connection.getSignatureStatus(signature, {
+        searchTransactionHistory: true,
+      });
+      const value = status.value;
+      if (value === null) {
+        return false;
+      }
+      if (value.err !== null) {
+        return false;
+      }
+      return value.confirmationStatus === 'confirmed' || value.confirmationStatus === 'finalized';
+    } catch (error) {
+      adapterLogger.warn('Failed to look up transaction status', {
+        signature,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return false;
+    }
   }
 }
 
