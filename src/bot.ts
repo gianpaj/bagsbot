@@ -28,6 +28,7 @@ import type { IBagsTradeService } from './trading/executor.js';
 import { PaperPricePoller } from './trading/price-poller.js';
 import { WalletManager } from './trading/wallet.js';
 import { fetchMarketData, assessMarket } from './sdk/jupiter-market.js';
+import { searchTokens } from './sdk/recent-launches.js';
 import { PositionManager } from './positions/manager.js';
 import { ExitMonitor } from './exits/monitor.js';
 import type { BotConfig } from './types/config.js';
@@ -206,6 +207,11 @@ export class BagsBot {
           onManualBuy: (launch): void => {
             this.handleManualBuy(launch).catch((err: unknown) => {
               this.logger.error('Error during manual buy', { error: err });
+            });
+          },
+          onSearchLookup: (query): void => {
+            this.handleSearchLookup(query).catch((err: unknown) => {
+              this.logger.error('Error during token search', { error: err });
             });
           },
           onQuit: (): void => {
@@ -579,6 +585,48 @@ export class BagsBot {
     if (this.uiApp !== null) {
       this.uiApp.updatePositions(this.positionManager.getOpenPositions());
     }
+  }
+
+  /**
+   * Look a coin up by name or mint (coin hash) against Jupiter and pull any
+   * matches into the dashboard. Matches are fed through the same path as seeded
+   * launches (`injectEvent`), so each runs the full analysis pipeline and shows
+   * up in the tracked list — letting the user find a coin the bot never saw
+   * launch and inspect or paper-buy it.
+   *
+   * @param query - Free-text search (token name, symbol, or mint address)
+   */
+  async handleSearchLookup(query: string): Promise<void> {
+    const trimmed = query.trim();
+    if (trimmed === '') {
+      return;
+    }
+
+    this.logger.info('Searching tokens via Jupiter', { query: trimmed });
+    this.uiApp?.addSystemMessage(`Searching Jupiter for "${trimmed}"...`);
+
+    let matches: LaunchpadLaunchEvent[];
+    try {
+      matches = await searchTokens(trimmed);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.warn('Token search failed', { query: trimmed, error: message });
+      this.uiApp?.addSystemMessage(`Token search failed: ${message}`);
+      return;
+    }
+
+    if (matches.length === 0) {
+      this.uiApp?.addSystemMessage(`No tokens found on Jupiter for "${trimmed}".`);
+      return;
+    }
+
+    const listener = this.getRestreamListener();
+    for (const event of matches) {
+      listener.injectEvent(event);
+    }
+    this.uiApp?.addSystemMessage(
+      `Found ${String(matches.length)} token(s) on Jupiter for "${trimmed}".`
+    );
   }
 
   /**

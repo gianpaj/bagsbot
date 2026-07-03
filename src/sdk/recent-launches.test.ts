@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   fetchRecentLaunches,
+  searchTokens,
   baseAssetToLaunchEvent,
   resolveSeedRecentHours,
 } from './recent-launches.js';
@@ -86,6 +87,55 @@ describe('fetchRecentLaunches', () => {
       statusText: 'Service Unavailable',
     })) as unknown as typeof fetch;
     await expect(fetchRecentLaunches(12, { fetchImpl })).rejects.toThrow(/503/);
+  });
+});
+
+describe('searchTokens', () => {
+  // The /v1/assets/search endpoint returns a bare array of assets.
+  function makeSearchFetch(assets: unknown[]): typeof fetch {
+    return vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      statusText: 'OK',
+      json: async () => assets,
+    })) as unknown as typeof fetch;
+  }
+
+  it('returns no results and skips the request for a blank query', async () => {
+    const fetchImpl = makeSearchFetch([]);
+    expect(await searchTokens('   ', { fetchImpl })).toEqual([]);
+    expect((fetchImpl as unknown as ReturnType<typeof vi.fn>)).not.toHaveBeenCalled();
+  });
+
+  it('encodes the query and maps matching assets to launch events', async () => {
+    const fetchImpl = makeSearchFetch([
+      makeBaseAsset({ id: 'CSyQmint', name: 'Jalapeño', symbol: 'PEPR' }),
+      { id: 'NoMeta' }, // dropped: missing name/symbol
+    ]);
+    const events = await searchTokens('CSyQ mint', { fetchImpl });
+
+    const url = (fetchImpl as unknown as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
+    expect(url).toContain('query=CSyQ%20mint');
+    expect(events).toHaveLength(1);
+    expect(events[0]?.mint).toBe('CSyQmint');
+    expect(events[0]?.symbol).toBe('PEPR');
+  });
+
+  it('caps the number of returned matches', async () => {
+    const assets = Array.from({ length: 25 }, (_unused, i) =>
+      makeBaseAsset({ id: `mint-${String(i)}`, symbol: 'T' })
+    );
+    const events = await searchTokens('token', { fetchImpl: makeSearchFetch(assets), limit: 5 });
+    expect(events).toHaveLength(5);
+  });
+
+  it('throws on a non-OK response', async () => {
+    const fetchImpl = vi.fn(async () => ({
+      ok: false,
+      status: 500,
+      statusText: 'Internal Server Error',
+    })) as unknown as typeof fetch;
+    await expect(searchTokens('pepe', { fetchImpl })).rejects.toThrow(/500/);
   });
 });
 

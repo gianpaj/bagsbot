@@ -38,6 +38,7 @@ import {
   addSystemMessage,
   selectNextItem,
   selectPreviousItem,
+  setSearchQuery,
   getSelectedPendingOpportunity,
   getSelectedTrackedItem,
 } from './dashboard-state.js';
@@ -54,12 +55,13 @@ const TextRenderable: any = (OpenTUI as any).TextRenderable;
 const HELP_SHORTCUTS = [
   ['j / down', 'Select next token'],
   ['k / up', 'Select previous token'],
+  ['/', 'Search coins by name or hash'],
   ['b', 'Buy selected opportunity'],
   ['s', 'Skip selected opportunity'],
   ['q', 'Quit dashboard'],
   ['`', 'Toggle raw logs drawer'],
   ['?', 'Open or close this help'],
-  ['esc', 'Close help modal'],
+  ['esc', 'Close help / clear search'],
 ] as const;
 
 // Preserve the old type export so existing component modules still compile.
@@ -68,6 +70,10 @@ export type ScreenState = 'main' | 'positions' | 'history' | 'settings';
 export interface AppState {
   dashboard: DashboardState;
   isHelpModalVisible: boolean;
+  // True while the Progress-pane search box is capturing keystrokes. The filter
+  // text itself lives on `dashboard.searchQuery` and persists after the box is
+  // dismissed; this flag only gates keyboard focus.
+  isSearchInputActive: boolean;
   isRunning: boolean;
 }
 
@@ -77,6 +83,10 @@ export interface AppConfig {
   onBuyOpportunity?: (opportunityId: string, amount: number) => void;
   onSkipOpportunity?: (opportunityId: string) => void;
   onManualBuy?: (launch: { mint: string; symbol: string; name: string }) => void;
+  // Look a coin up by name or mint (coin hash) against an external source
+  // (Jupiter) and pull any matches into the dashboard. Invoked when the user
+  // submits the search box with Enter.
+  onSearchLookup?: (query: string) => void;
   onQuit?: () => void;
 }
 
@@ -97,6 +107,7 @@ export class OpenTUIApp {
     this.state = {
       dashboard: createDashboardState(),
       isHelpModalVisible: false,
+      isSearchInputActive: false,
       isRunning: false,
     };
   }
@@ -167,10 +178,24 @@ export class OpenTUIApp {
       return;
     }
 
+    // Clipboard paste is delivered as its own event (with the text as bytes),
+    // separate from keypress, so the search box subscribes to it explicitly.
+    this.renderer.keyInput.on('paste', (event: { bytes?: unknown; text?: unknown }) => {
+      this.handlePasteEvent(event);
+    });
+
     // Selection is item-centric: keyboard input moves through tracked coins,
     // then buy/skip actions operate on the selected pending opportunity.
     this.renderer.keyInput.on('keypress', (key: KeyInputEvent) => {
       const keyStr = String(key.name ?? key.sequence ?? key.raw ?? '').toLowerCase();
+
+      // While the search box is focused it owns every keystroke so that typing
+      // (including `j`, `b`, `?`, etc.) edits the query instead of triggering
+      // navigation or other shortcuts.
+      if (this.state.isSearchInputActive) {
+        this.handleSearchInputKey(key);
+        return;
+      }
 
       if (!this.state.isHelpModalVisible && (keyStr === '`' || keyStr === '"')) {
         this.toggleConsoleDrawer();
@@ -192,6 +217,11 @@ export class OpenTUIApp {
         if (keyStr === '\u001b' || keyStr === 'q') {
           this.closeHelpModal();
         }
+        return;
+      }
+
+      if (keyStr === '/') {
+        this.openSearchInput();
         return;
       }
 
@@ -377,6 +407,119 @@ export class OpenTUIApp {
     selectPreviousItem(this.state.dashboard);
     this.updateLayout();
     this.ensureSelectedItemVisible();
+  }
+
+  // Focus the search box, keeping any existing query so it can be edited.
+  private openSearchInput(): void {
+    this.state.isSearchInputActive = true;
+    this.updateLayout();
+  }
+
+  /**
+   * Handle a keystroke while the search box is focused.
+   *
+   * - Esc cancels the search and clears the filter.
+   * - Enter applies the filter and returns keyboard focus to the dashboard.
+   * - Backspace edits the query.
+   * - Any printable character (including space, for multi-word coin names)
+   *   extends the query.
+   *
+   * Special keys are matched by name and control-character code rather than by
+   * literal so we never embed raw ESC/backspace bytes in the source.
+   */
+  private handleSearchInputKey(key: KeyInputEvent): void {
+    const name: string = typeof key.name === 'string' ? key.name.toLowerCase() : '';
+    const sequence: string =
+      typeof key.sequence === 'string'
+        ? key.sequence
+        : typeof key.raw === 'string'
+          ? key.raw
+          : '';
+    const firstCode = sequence.length > 0 ? sequence.charCodeAt(0) : -1;
+    // A lone ESC (single 0x1b byte) is the Escape key; multi-byte sequences that
+    // merely *start* with 0x1b are CSI keys (arrows, function keys) and must not
+    // be treated as Escape.
+    const isLoneEscape = sequence.length === 1 && firstCode === 0x1b;
+
+    // Esc — cancel: drop the filter entirely and leave search mode.
+    if (name === 'escape' || isLoneEscape) {
+      this.state.isSearchInputActive = false;
+      setSearchQuery(this.state.dashboard, '');
+      this.updateLayout();
+      this.ensureSelectedItemVisible();
+      return;
+    }
+
+    // Enter — apply the filter, leave the box, and (if a handler is wired) look
+    // the query up against Jupiter so coins not yet tracked locally can be found
+    // by name or mint (coin hash) and pulled into the dashboard.
+    if (name === 'return' || name === 'enter' || firstCode === 0x0d || firstCode === 0x0a) {
+      this.state.isSearchInputActive = false;
+      const query = this.state.dashboard.searchQuery.trim();
+      this.updateLayout();
+      this.ensureSelectedItemVisible();
+      if (query !== '') {
+        this.config.onSearchLookup?.(query);
+      }
+      return;
+    }
+
+    // Backspace — edit the query.
+    if (name === 'backspace' || firstCode === 0x7f || firstCode === 0x08) {
+      const next = this.state.dashboard.searchQuery.slice(0, -1);
+      setSearchQuery(this.state.dashboard, next);
+      this.updateLayout();
+      this.ensureSelectedItemVisible();
+      return;
+    }
+
+    // Ignore any other escape/control sequence (arrows, function keys, etc.).
+    if (firstCode === 0x1b) {
+      return;
+    }
+
+    // Typed text extends the query. `sequence` is normally one character, but
+    // some terminals deliver short bursts; sanitize and append whatever printable
+    // text it carries. (Clipboard pastes arrive via the separate `paste` event.)
+    this.appendToSearchQuery(sequence);
+  }
+
+  // Append printable text to the search query, dropping control characters.
+  // Used by both typed keystrokes and clipboard paste.
+  private appendToSearchQuery(text: string): void {
+    let clean = '';
+    for (const char of text) {
+      const code = char.charCodeAt(0);
+      if (code >= 0x20 && code !== 0x7f) {
+        clean += char;
+      }
+    }
+    if (clean.length === 0) {
+      return;
+    }
+
+    setSearchQuery(this.state.dashboard, this.state.dashboard.searchQuery + clean);
+    this.updateLayout();
+    this.ensureSelectedItemVisible();
+  }
+
+  // Clipboard paste arrives as a dedicated `paste` event (not `keypress`), with
+  // the text as a byte array. Route it into the search box when it has focus.
+  private handlePasteEvent(event: { bytes?: unknown; text?: unknown }): void {
+    if (!this.state.isSearchInputActive) {
+      return;
+    }
+
+    let text = '';
+    if (event.bytes instanceof Uint8Array) {
+      text = new TextDecoder().decode(event.bytes);
+    } else if (typeof event.text === 'string') {
+      text = event.text;
+    } else if (typeof event.bytes === 'string') {
+      text = event.bytes;
+    }
+
+    this.appendToSearchQuery(text);
   }
 
   /**

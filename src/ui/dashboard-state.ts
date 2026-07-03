@@ -5,7 +5,7 @@ import type { LaunchpadLaunchEvent } from '../types/launch.js';
 import type { Position, ExitSignal } from '../types/positions.js';
 import type { TradeResult } from '../types/trading.js';
 import type { ConfidenceLevel } from '../scoring/engine.js';
-import type { MarketAssessment } from '../sdk/jupiter-market.js';
+import type { MarketAssessment, MarketRating, SignalStatus } from '../sdk/jupiter-market.js';
 
 export type DashboardAgentName =
   | 'Launch Listener'
@@ -71,6 +71,9 @@ export interface DashboardState {
   selectedItemId: string | null;
   events: DashboardEvent[];
   toolCalls: number;
+  // Free-text filter applied to the Progress pane. Matches a coin by name,
+  // symbol, or mint (coin hash). Empty string means no filter is active.
+  searchQuery: string;
 }
 
 export interface DashboardMetrics {
@@ -275,6 +278,7 @@ export function createDashboardState(): DashboardState {
     selectedItemId: null,
     events: [],
     toolCalls: 0,
+    searchQuery: '',
   };
 }
 
@@ -377,7 +381,13 @@ export function trackLaunch(state: DashboardState, launch: LaunchpadLaunchEvent)
   appendUnique(item.notes, 'Launch detected from Bags restream.', MAX_NOTES);
   pushEvent(state, item.id, 'Tool', `Launch detected for ${launch.symbol} (${launch.name})`);
   sortTrackedItems(state);
-  state.selectedItemId = item.id;
+  // Auto-select the freshest launch, but never pull selection to a coin the
+  // active search filter is hiding — that would be jarring while searching.
+  if (itemMatchesSearch(item, state.searchQuery)) {
+    state.selectedItemId = item.id;
+  } else {
+    ensureVisibleSelection(state);
+  }
   return item;
 }
 
@@ -723,32 +733,80 @@ export function addSystemMessage(
   pushEvent(state, itemId, 'System', message);
 }
 
-// Selection is cyclic so the keyboard UX stays predictable in a live-updating list.
-export function selectNextItem(state: DashboardState): void {
-  if (state.trackedItems.length === 0) {
+// Does a tracked coin match the free-text search query? Matching is
+// case-insensitive substring over the coin's name, ticker symbol, and mint
+// (the "coin hash") so users can find a coin by any of them.
+export function itemMatchesSearch(item: DashboardTrackedItem, query: string): boolean {
+  const needle = query.trim().toLowerCase();
+  if (needle === '') {
+    return true;
+  }
+
+  return (
+    item.name.toLowerCase().includes(needle) ||
+    item.symbol.toLowerCase().includes(needle) ||
+    item.mint.toLowerCase().includes(needle)
+  );
+}
+
+// The tracked coins the Progress pane should show given the active search
+// query. With no query this is just every tracked item.
+export function getVisibleTrackedItems(state: DashboardState): DashboardTrackedItem[] {
+  if (state.searchQuery.trim() === '') {
+    return state.trackedItems;
+  }
+
+  return state.trackedItems.filter((item) => itemMatchesSearch(item, state.searchQuery));
+}
+
+// Keep the selection pointing at a coin that is actually visible under the
+// current filter. If the selected coin was filtered out, fall back to the first
+// visible coin (or clear the selection when nothing matches).
+function ensureVisibleSelection(state: DashboardState): void {
+  const visible = getVisibleTrackedItems(state);
+  if (visible.length === 0) {
     state.selectedItemId = null;
     return;
   }
 
-  ensureSelection(state);
-  const currentIndex = state.trackedItems.findIndex((item) => item.id === state.selectedItemId);
-  const nextIndex = currentIndex >= 0 ? (currentIndex + 1) % state.trackedItems.length : 0;
-  state.selectedItemId = state.trackedItems[nextIndex]?.id ?? null;
+  if (!visible.some((item) => item.id === state.selectedItemId)) {
+    state.selectedItemId = visible[0]?.id ?? null;
+  }
+}
+
+// Apply (or clear, with an empty string) the Progress-pane search filter and
+// reconcile the selection with whatever is now visible.
+export function setSearchQuery(state: DashboardState, query: string): void {
+  state.searchQuery = query;
+  ensureVisibleSelection(state);
+}
+
+// Selection is cyclic so the keyboard UX stays predictable in a live-updating
+// list. Navigation walks the *visible* (filtered) coins so j/k stay inside the
+// search results while a filter is active.
+export function selectNextItem(state: DashboardState): void {
+  const items = getVisibleTrackedItems(state);
+  if (items.length === 0) {
+    state.selectedItemId = null;
+    return;
+  }
+
+  const currentIndex = items.findIndex((item) => item.id === state.selectedItemId);
+  const nextIndex = currentIndex >= 0 ? (currentIndex + 1) % items.length : 0;
+  state.selectedItemId = items[nextIndex]?.id ?? null;
 }
 
 export function selectPreviousItem(state: DashboardState): void {
-  if (state.trackedItems.length === 0) {
+  const items = getVisibleTrackedItems(state);
+  if (items.length === 0) {
     state.selectedItemId = null;
     return;
   }
 
-  ensureSelection(state);
-  const currentIndex = state.trackedItems.findIndex((item) => item.id === state.selectedItemId);
+  const currentIndex = items.findIndex((item) => item.id === state.selectedItemId);
   const previousIndex =
-    currentIndex >= 0
-      ? (currentIndex - 1 + state.trackedItems.length) % state.trackedItems.length
-      : 0;
-  state.selectedItemId = state.trackedItems[previousIndex]?.id ?? null;
+    currentIndex >= 0 ? (currentIndex - 1 + items.length) % items.length : 0;
+  state.selectedItemId = items[previousIndex]?.id ?? null;
 }
 
 export function getSelectedPendingOpportunity(state: DashboardState): DashboardOpportunityState | null {
@@ -856,90 +914,141 @@ export function formatAgentStatus(status: DashboardAgentStatus): string {
   }
 }
 
-export function buildCurrentReport(item: DashboardTrackedItem | null): string {
+/**
+ * A single line of the analysis report. `color` is an optional OpenTUI
+ * foreground token applied by the renderer; it is set for the market rating
+ * headline and each market signal so the detail pane keeps the same coloring
+ * the per-signal breakdown used to have.
+ */
+export interface ReportLine {
+  content: string;
+  color?: string;
+}
+
+function reportRatingColor(rating: MarketRating): string {
+  switch (rating) {
+    case 'good':
+      return 'green';
+    case 'caution':
+      return 'yellow';
+    default:
+      return 'red';
+  }
+}
+
+function reportSignalColor(status: SignalStatus): string {
+  switch (status) {
+    case 'good':
+      return 'green';
+    case 'warn':
+      return 'yellow';
+    case 'bad':
+      return 'red';
+    default:
+      return 'gray';
+  }
+}
+
+export function buildCurrentReportLines(item: DashboardTrackedItem | null): ReportLine[] {
   if (item === null) {
-    return 'Select a tracked coin to view analysis.';
+    return [{ content: 'Select a tracked coin to view analysis.' }];
   }
 
   // The report is assembled progressively from structured runtime data rather
   // than requiring a separate LLM output pipeline.
-  const lines = [
-    `${item.name} (${item.symbol})`,
-    `Mint: ${item.mint}`,
-    `Stage: ${item.stage}`,
+  const lines: ReportLine[] = [
+    { content: `${item.name} (${item.symbol})` },
+    { content: `Mint: ${item.mint}` },
+    { content: `Stage: ${item.stage}` },
   ];
 
   if (item.score !== undefined) {
-    lines.push(`Score: ${String(item.score)}/100`);
+    lines.push({ content: `Score: ${String(item.score)}/100` });
   }
 
   if (item.confidence !== undefined) {
-    lines.push(`Confidence: ${item.confidence}`);
+    lines.push({ content: `Confidence: ${item.confidence}` });
   }
 
-  lines.push(`Opportunity: ${getOpportunityLabel(item)}`);
+  lines.push({ content: `Opportunity: ${getOpportunityLabel(item)}` });
 
   if (item.opportunity !== undefined) {
-    lines.push(`Suggested amount: ${item.opportunity.suggestedAmount.toFixed(4)} SOL`);
+    lines.push({
+      content: `Suggested amount: ${item.opportunity.suggestedAmount.toFixed(4)} SOL`,
+    });
     if (item.opportunity.confirmedAmount !== undefined) {
-      lines.push(`Confirmed amount: ${item.opportunity.confirmedAmount.toFixed(4)} SOL`);
+      lines.push({
+        content: `Confirmed amount: ${item.opportunity.confirmedAmount.toFixed(4)} SOL`,
+      });
     }
   }
 
   if (item.filterResult !== undefined) {
-    lines.push('');
-    lines.push('Filter Breakdown');
-    lines.push(
-      `Creator: ${String(item.filterResult.filters.creator.score)}/100 - ${item.filterResult.filters.creator.details}`
-    );
-    lines.push(
-      `Technical: ${String(item.filterResult.filters.technical.score)}/100 - ${item.filterResult.filters.technical.details}`
-    );
-    lines.push(
-      `Social: ${String(item.filterResult.filters.social.score)}/100 - ${item.filterResult.filters.social.details}`
-    );
-    lines.push(
-      `Liquidity: ${String(item.filterResult.filters.liquidity.score)}/100 - ${item.filterResult.filters.liquidity.details}`
-    );
+    lines.push({ content: '' });
+    lines.push({ content: 'Filter Breakdown' });
+    lines.push({
+      content: `Creator: ${String(item.filterResult.filters.creator.score)}/100 - ${item.filterResult.filters.creator.details}`,
+    });
+    lines.push({
+      content: `Technical: ${String(item.filterResult.filters.technical.score)}/100 - ${item.filterResult.filters.technical.details}`,
+    });
+    lines.push({
+      content: `Social: ${String(item.filterResult.filters.social.score)}/100 - ${item.filterResult.filters.social.details}`,
+    });
+    lines.push({
+      content: `Liquidity: ${String(item.filterResult.filters.liquidity.score)}/100 - ${item.filterResult.filters.liquidity.details}`,
+    });
   }
 
   if (item.market !== undefined) {
-    lines.push('');
-    lines.push(`Market Signals - ${item.market.rating.toUpperCase()} (${String(item.market.score)}/100)`);
+    lines.push({ content: '' });
+    lines.push({
+      content: `Market Signals - ${item.market.rating.toUpperCase()} (${String(item.market.score)}/100)`,
+      color: reportRatingColor(item.market.rating),
+    });
     item.market.signals.forEach((signal) => {
       const marker = signal.status === 'good' ? '+' : signal.status === 'bad' ? '!' : '~';
-      lines.push(`${marker} ${signal.label}: ${signal.value}`);
+      lines.push({
+        content: `${marker} ${signal.label}: ${signal.value}`,
+        color: reportSignalColor(signal.status),
+      });
     });
   }
 
   if (item.position !== undefined) {
-    lines.push('');
-    lines.push('Position');
-    lines.push(`Status: ${item.position.status}`);
-    lines.push(`Entry: ${item.position.entrySol.toFixed(4)} SOL`);
+    lines.push({ content: '' });
+    lines.push({ content: 'Position' });
+    lines.push({ content: `Status: ${item.position.status}` });
+    lines.push({ content: `Entry: ${item.position.entrySol.toFixed(4)} SOL` });
     if (item.position.currentValue !== undefined) {
-      lines.push(`Current value: ${item.position.currentValue.toFixed(4)} SOL`);
+      lines.push({ content: `Current value: ${item.position.currentValue.toFixed(4)} SOL` });
     }
     if (item.position.pnlPercent !== undefined) {
-      lines.push(`PnL: ${item.position.pnlPercent.toFixed(2)}%`);
+      lines.push({ content: `PnL: ${item.position.pnlPercent.toFixed(2)}%` });
     }
   }
 
   if (item.notes.length > 0) {
-    lines.push('');
-    lines.push('Latest Analysis');
+    lines.push({ content: '' });
+    lines.push({ content: 'Latest Analysis' });
     item.notes.slice(-8).forEach((note) => {
-      lines.push(`- ${note}`);
+      lines.push({ content: `- ${note}` });
     });
   }
 
   if (item.errors.length > 0) {
-    lines.push('');
-    lines.push('Errors');
+    lines.push({ content: '' });
+    lines.push({ content: 'Errors' });
     item.errors.slice(-4).forEach((error) => {
-      lines.push(`- ${error}`);
+      lines.push({ content: `- ${error}` });
     });
   }
 
-  return lines.join('\n');
+  return lines;
+}
+
+export function buildCurrentReport(item: DashboardTrackedItem | null): string {
+  return buildCurrentReportLines(item)
+    .map((line) => line.content)
+    .join('\n');
 }

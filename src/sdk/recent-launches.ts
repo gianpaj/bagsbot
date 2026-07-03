@@ -26,6 +26,17 @@ export const DEFAULT_SEED_RECENT_HOURS = 12;
 /** Jupiter data API recent-pools endpoint (used by the bags.fm frontend). */
 export const JUPITER_DATAPI_POOLS_URL = 'https://datapi.jup.ag/v1/pools';
 
+/**
+ * Jupiter data API token-search endpoint. Accepts a free-text `query` that may
+ * be a token name, symbol, or mint address (coin hash) and returns matching
+ * assets. Unlike the pools feed this is not restricted to a launchpad, so it can
+ * find any token — including ones the bot never saw launch.
+ */
+export const JUPITER_DATAPI_ASSETS_SEARCH_URL = 'https://datapi.jup.ag/v1/assets/search';
+
+/** Default cap on how many search matches to pull into the dashboard at once. */
+export const DEFAULT_SEARCH_LIMIT = 10;
+
 /** Jupiter `launchpad` value identifying Bags launches. */
 export const BAGS_LAUNCHPAD = 'bags.fun';
 
@@ -165,6 +176,66 @@ export async function fetchRecentLaunches(
   }
 
   return dated.map((d) => d.event);
+}
+
+/** Options for {@link searchTokens}, primarily for testing. */
+export interface SearchTokensOptions {
+  /** Base search URL (defaults to the Jupiter data API). */
+  baseUrl?: string;
+  /** Fetch implementation (defaults to global `fetch`). */
+  fetchImpl?: typeof fetch;
+  /** Maximum number of matches to return. */
+  limit?: number;
+}
+
+/**
+ * Search Jupiter for tokens matching a free-text query (name, symbol, or mint /
+ * coin hash), returning them as launch events the bot can track.
+ *
+ * The `/v1/assets/search` endpoint returns a bare JSON array of assets. Matches
+ * missing the metadata the pipeline needs (mint/name/symbol) are dropped.
+ *
+ * @param query - Name, symbol, or mint address to search for.
+ * @param options - Overrides for URL / fetch / limit (testing).
+ * @returns Launch events for matching tokens (empty when the query is blank).
+ */
+export async function searchTokens(
+  query: string,
+  options: SearchTokensOptions = {}
+): Promise<LaunchpadLaunchEvent[]> {
+  const trimmed = query.trim();
+  if (trimmed === '') {
+    return [];
+  }
+
+  const baseUrl = options.baseUrl ?? JUPITER_DATAPI_ASSETS_SEARCH_URL;
+  const fetchImpl = options.fetchImpl ?? fetch;
+  const limit = options.limit ?? DEFAULT_SEARCH_LIMIT;
+
+  const url = `${baseUrl}?query=${encodeURIComponent(trimmed)}`;
+  const response = await fetchImpl(url, { headers: { accept: 'application/json' } });
+  if (!response.ok) {
+    throw new Error(
+      `Jupiter token search failed: ${String(response.status)} ${response.statusText}`
+    );
+  }
+
+  const assets = (await response.json()) as JupiterBaseAsset[];
+  const events: LaunchpadLaunchEvent[] = [];
+  for (const asset of Array.isArray(assets) ? assets.slice(0, limit) : []) {
+    const event = baseAssetToLaunchEvent(asset);
+    if (event !== null) {
+      events.push(event);
+    }
+  }
+
+  recentLaunchesLogger.info('Searched tokens on Jupiter', {
+    query: trimmed,
+    returned: Array.isArray(assets) ? assets.length : 0,
+    usable: events.length,
+  });
+
+  return events;
 }
 
 /**

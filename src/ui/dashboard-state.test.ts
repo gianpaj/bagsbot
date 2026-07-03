@@ -6,8 +6,12 @@ import {
   markOpportunityCreated,
   getSelectedTrackedItem,
   buildCurrentReport,
+  buildCurrentReportLines,
   selectNextItem,
   selectPreviousItem,
+  setSearchQuery,
+  getVisibleTrackedItems,
+  itemMatchesSearch,
   syncPositions,
   getOpenPositions,
   getPositionPnl,
@@ -179,6 +183,32 @@ describe('dashboard state', () => {
     expect(report).toContain('Momentum 1h: 2.0x, net +5');
   });
 
+  it('colors the market rating headline and each signal line in the detail report', () => {
+    const state = createDashboardState();
+    trackLaunch(state, { mint: 'mint-1', creator: 'creator-1', name: 'Token One', symbol: 'ONE' });
+
+    setMarketData(state, 'mint-1', {
+      score: 28,
+      rating: 'avoid',
+      signals: [
+        { key: 'organic', label: 'Organic', value: 'low (0)', status: 'bad' },
+        { key: 'momentum', label: 'Momentum 1h', value: 'no activity', status: 'warn' },
+        { key: 'safety', label: 'Safety', value: 'mint off, freeze off', status: 'good' },
+      ],
+    });
+
+    const lines = buildCurrentReportLines(getSelectedTrackedItem(state));
+    const ratingLine = lines.find((line) => line.content.startsWith('Market Signals -'));
+    expect(ratingLine?.color).toBe('red');
+
+    expect(lines.find((line) => line.content.includes('Organic:'))?.color).toBe('red');
+    expect(lines.find((line) => line.content.includes('Momentum 1h:'))?.color).toBe('yellow');
+    expect(lines.find((line) => line.content.includes('Safety:'))?.color).toBe('green');
+
+    // Non-signal lines stay uncolored (default foreground).
+    expect(lines.find((line) => line.content.startsWith('Mint:'))?.color).toBeUndefined();
+  });
+
   it('caps tracked items but never evicts open positions or pending opportunities', () => {
     const state = createDashboardState();
 
@@ -213,6 +243,76 @@ describe('dashboard state', () => {
     const ids = new Set(state.trackedItems.map((item) => item.id));
     expect(ids.has('held-mint')).toBe(true);
     expect(ids.has('pending-mint')).toBe(true);
+  });
+
+  it('matches coins by name, symbol, or mint (coin hash), case-insensitively', () => {
+    const item = {
+      id: 'AbC123XyZmint',
+      mint: 'AbC123XyZmint',
+      symbol: 'PEPE',
+      name: 'Based Pepe',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      stage: 'launch detected',
+      agentStatuses: {} as never,
+      notes: [],
+      errors: [],
+    };
+
+    expect(itemMatchesSearch(item, '')).toBe(true);
+    expect(itemMatchesSearch(item, 'pepe')).toBe(true);
+    expect(itemMatchesSearch(item, 'BASED')).toBe(true);
+    expect(itemMatchesSearch(item, 'abc123')).toBe(true);
+    expect(itemMatchesSearch(item, 'doge')).toBe(false);
+  });
+
+  it('filters the visible tracked items and keeps the selection within the matches', () => {
+    const state = createDashboardState();
+    trackLaunch(state, { mint: 'mint-pepe', creator: 'c', name: 'Based Pepe', symbol: 'PEPE' });
+    trackLaunch(state, { mint: 'mint-doge', creator: 'c', name: 'Doge Coin', symbol: 'DOGE' });
+    trackLaunch(state, { mint: 'mint-cat', creator: 'c', name: 'Cat Token', symbol: 'CAT' });
+
+    // No filter: every coin is visible.
+    expect(getVisibleTrackedItems(state)).toHaveLength(3);
+
+    // Filtering down to one match moves the selection onto that match.
+    setSearchQuery(state, 'doge');
+    const visible = getVisibleTrackedItems(state);
+    expect(visible).toHaveLength(1);
+    expect(visible[0]?.mint).toBe('mint-doge');
+    expect(state.selectedItemId).toBe('mint-doge');
+
+    // Searching by mint (coin hash) also works.
+    setSearchQuery(state, 'mint-cat');
+    expect(getVisibleTrackedItems(state).map((item) => item.mint)).toEqual(['mint-cat']);
+    expect(state.selectedItemId).toBe('mint-cat');
+
+    // Navigation stays inside the filtered result set.
+    setSearchQuery(state, 'mint');
+    expect(getVisibleTrackedItems(state)).toHaveLength(3);
+    setSearchQuery(state, 'pepe');
+    selectNextItem(state);
+    expect(state.selectedItemId).toBe('mint-pepe');
+
+    // Clearing the filter restores the full list.
+    setSearchQuery(state, '');
+    expect(getVisibleTrackedItems(state)).toHaveLength(3);
+  });
+
+  it('does not yank the selection to a new launch that the active filter hides', () => {
+    const state = createDashboardState();
+    trackLaunch(state, { mint: 'mint-pepe', creator: 'c', name: 'Based Pepe', symbol: 'PEPE' });
+    setSearchQuery(state, 'pepe');
+    expect(state.selectedItemId).toBe('mint-pepe');
+
+    // A non-matching launch arrives; selection should stay on the visible match.
+    trackLaunch(state, { mint: 'mint-doge', creator: 'c', name: 'Doge Coin', symbol: 'DOGE' });
+    expect(state.selectedItemId).toBe('mint-pepe');
+    expect(getVisibleTrackedItems(state).map((item) => item.mint)).toEqual(['mint-pepe']);
+
+    // A matching launch arrives; it becomes the freshest visible selection.
+    trackLaunch(state, { mint: 'mint-pepe2', creator: 'c', name: 'Pepe Classic', symbol: 'PEPEC' });
+    expect(state.selectedItemId).toBe('mint-pepe2');
   });
 
   it('excludes closed positions from the portfolio summary', () => {

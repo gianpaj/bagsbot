@@ -4,16 +4,17 @@
 
 import * as OpenTUIRenderables from '@opentui/core';
 import type { BotConfig } from '../types/index.js';
-import type { SignalStatus, MarketRating } from '../sdk/jupiter-market.js';
+import type { MarketRating } from '../sdk/jupiter-market.js';
 import type { AppState } from './app.js';
 import {
   type DashboardTrackedItem,
   DASHBOARD_AGENT_ORDER,
-  buildCurrentReport,
+  buildCurrentReportLines,
   formatAgentStatus,
   formatTimestamp,
   getDashboardMetrics,
   getSelectedTrackedItem,
+  getVisibleTrackedItems,
   getPortfolioSummary,
   getPositionPnl,
 } from './dashboard-state.js';
@@ -71,19 +72,6 @@ function createHeader(state: AppState): unknown {
   );
 }
 
-function signalColor(status: SignalStatus): string {
-  switch (status) {
-    case 'good':
-      return 'green';
-    case 'warn':
-      return 'yellow';
-    case 'bad':
-      return 'red';
-    default:
-      return 'gray';
-  }
-}
-
 function ratingColor(rating: MarketRating): string {
   switch (rating) {
     case 'good':
@@ -121,8 +109,9 @@ function createProgressCard(item: DashboardTrackedItem, isSelected: boolean): un
     );
   });
 
-  // Market signals (Jupiter data API): a colored rating for every card, plus
-  // the five individual indicators on the expanded (selected) card.
+  // Market rating (Jupiter data API): a colored headline rating for every card.
+  // The full per-signal breakdown is shown only in the detail pane
+  // (buildCurrentReport) so it is not duplicated on the selected card.
   if (item.market !== undefined) {
     lines.push(
       Text({
@@ -131,18 +120,6 @@ function createProgressCard(item: DashboardTrackedItem, isSelected: boolean): un
         content: `Market: ${item.market.rating.toUpperCase()} (${String(item.market.score)}/100)`,
       })
     );
-    if (isSelected) {
-      item.market.signals.forEach((signal) => {
-        const marker = signal.status === 'good' ? '+' : signal.status === 'bad' ? '!' : '~';
-        lines.push(
-          Text({
-            id: `${item.id}-market-${signal.key}`,
-            fg: signalColor(signal.status),
-            content: `  ${marker} ${signal.label}: ${signal.value}`,
-          })
-        );
-      });
-    }
   }
 
   if (!isSelected) {
@@ -172,18 +149,87 @@ function createProgressCard(item: DashboardTrackedItem, isSelected: boolean): un
   );
 }
 
+// A single-line search box shown above the coin list. It is visible while the
+// box is focused or whenever a filter is applied, and reports how many of the
+// tracked coins currently match.
+function createSearchBar(state: AppState, matchCount: number): unknown {
+  const query = state.dashboard.searchQuery;
+  const total = state.dashboard.trackedItems.length;
+  // A trailing cursor marks the box as actively capturing input.
+  const cursor = state.isSearchInputActive ? '_' : '';
+  const hint = state.isSearchInputActive ? '[Enter] search Jupiter  [Esc] clear' : '[/] edit';
+
+  return Box(
+    {
+      id: 'progress-search-bar',
+      border: true,
+      borderColor: state.isSearchInputActive ? 'cyan' : 'gray',
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      width: '100%',
+      marginBottom: 1,
+      paddingLeft: 1,
+      paddingRight: 1,
+    },
+    Text({
+      id: 'progress-search-text',
+      fg: state.isSearchInputActive ? 'cyan' : 'white',
+      content: `Search: ${query}${cursor}`,
+    }),
+    Text({
+      id: 'progress-search-meta',
+      fg: 'gray',
+      content: `${String(matchCount)}/${String(total)}  ${hint}`,
+    })
+  );
+}
+
 function createProgressPanel(state: AppState): unknown {
-  const children =
-    state.dashboard.trackedItems.length === 0
-      ? [
-          Text({
-            id: 'progress-empty',
-            content: 'Waiting for launches and opportunities...',
-          }),
-        ]
-      : state.dashboard.trackedItems.map((item) =>
-          createProgressCard(item, item.id === state.dashboard.selectedItemId)
-        );
+  const visibleItems = getVisibleTrackedItems(state.dashboard);
+  const query = state.dashboard.searchQuery.trim();
+  // The search box is shown while focused, or while a filter remains applied.
+  const showSearchBar = state.isSearchInputActive || query !== '';
+
+  let children: unknown[];
+  if (state.dashboard.trackedItems.length === 0) {
+    children = [
+      Text({
+        id: 'progress-empty',
+        content: 'Waiting for launches and opportunities...',
+      }),
+    ];
+  } else if (visibleItems.length === 0) {
+    children = [
+      Text({
+        id: 'progress-empty',
+        content: `No coins match "${query}".`,
+      }),
+    ];
+  } else {
+    children = visibleItems.map((item) =>
+      createProgressCard(item, item.id === state.dashboard.selectedItemId)
+    );
+  }
+
+  const panelChildren: unknown[] = [];
+  if (showSearchBar) {
+    panelChildren.push(createSearchBar(state, visibleItems.length));
+  }
+  panelChildren.push(
+    ScrollBox(
+      {
+        id: 'progress-scroll',
+        flexGrow: 1,
+        width: '100%',
+        height: '100%',
+        scrollY: true,
+        border: false,
+        paddingTop: 1,
+        paddingBottom: 1,
+      },
+      ...children
+    )
+  );
 
   return Box(
     {
@@ -199,19 +245,7 @@ function createProgressPanel(state: AppState): unknown {
       paddingTop: 0,
       paddingBottom: 0,
     },
-    ScrollBox(
-      {
-        id: 'progress-scroll',
-        flexGrow: 1,
-        width: '100%',
-        height: '100%',
-        scrollY: true,
-        border: false,
-        paddingTop: 1,
-        paddingBottom: 1,
-      },
-      ...children
-    )
+    ...panelChildren
   );
 }
 
@@ -316,10 +350,13 @@ function createCurrentReportPanel(state: AppState): unknown {
         paddingTop: 1,
         paddingBottom: 1,
       },
-      Text({
-        id: 'report-content',
-        content: buildCurrentReport(selected),
-      })
+      ...buildCurrentReportLines(selected).map((line, index) =>
+        Text({
+          id: `report-line-${String(index)}`,
+          fg: line.color,
+          content: line.content,
+        })
+      )
     )
   );
 }

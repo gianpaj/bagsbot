@@ -44,6 +44,7 @@ const mockBotConfig = {
 function createState(): AppState {
   return {
     isHelpModalVisible: false,
+    isSearchInputActive: false,
     isRunning: true,
     dashboard: {
       startedAt: new Date('2026-03-28T10:00:00Z'),
@@ -51,6 +52,7 @@ function createState(): AppState {
       walletBalanceSol: 1.5,
       selectedItemId: 'mint-1',
       toolCalls: 2,
+      searchQuery: '',
       events: [
         {
           id: 'evt-1',
