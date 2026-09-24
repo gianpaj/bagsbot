@@ -49,7 +49,7 @@
     "tsx": "4.22.4",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.54.0",
-    "vitest": "^4.0.18"
+    "vitest": "^4.1.11"
   },
   "dependencies": {
     "@bagsfm/bags-sdk": "1.3.9",
